@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from core.models import Agente, Projeto, Repositorio
+from core.models import (
+    AcessoAgente,
+    Agente,
+    ConfiguracaoModelo,
+    Contexto,
+    Projeto,
+    Repositorio,
+)
 
 
 @admin.register(Projeto)
@@ -16,3 +23,20 @@ class RepositorioAdmin(admin.ModelAdmin):
 @admin.register(Agente)
 class AgenteAdmin(admin.ModelAdmin):
     list_display = ("nome", "especialidade", "demo")
+
+
+@admin.register(AcessoAgente)
+class AcessoAgenteAdmin(admin.ModelAdmin):
+    list_display = ("projeto", "agente", "ativo")
+    list_filter = ("projeto", "ativo")
+
+
+@admin.register(ConfiguracaoModelo)
+class ConfiguracaoModeloAdmin(admin.ModelAdmin):
+    list_display = ("agente", "modo", "provedor", "modelo", "habilitado")
+
+
+@admin.register(Contexto)
+class ContextoAdmin(admin.ModelAdmin):
+    list_display = ("projeto", "agente", "formato_entrega", "criado_em")
+    list_filter = ("projeto", "agente")
