@@ -1,6 +1,18 @@
 # Escritório 2D
 
-Protótipo de escritório virtual 2D para conduzir sessões com Neto (coordenador), especialistas e registro de decisão. Esta é a **Entrega 1** do piloto: aplicação local reproduzível com Docker Compose. Entregas 2 a 4 (catálogo, chat/delegação e sala 2D) ainda não estão implementadas.
+Protótipo de escritório virtual 2D para conduzir sessões com Neto (coordenador), especialistas e registro de decisão. Entregas 1 a 4 do piloto estão implementadas: aplicação local reproduzível, catálogo de agentes/projetos, chat de delegação com Neto e a sala 2D (Phaser) ligada ao trabalho real.
+
+## Fluxo completo (Entrega 4)
+
+1. Suba a aplicação (seção abaixo) e crie o primeiro usuário.
+2. Abra `http://127.0.0.1:8000`, faça login (link para o Django Admin aparece na tela se a sessão não estiver ativa) e escolha um projeto.
+3. A sala mostra os agentes autorizados nesse projeto. Clique em um avatar para abrir a ficha.
+4. No chat com Neto, descreva um pedido. Pedidos simples encerram sem convocação; pedidos de mudança de código propõem uma convocação com agentes sugeridos (ex.: Hamilton + Kernighan).
+5. Confirme a convocação com os agentes desejados. Os cartões de turno aparecem; cole o resultado de cada especialista para fechar o turno — o avatar correspondente muda de estado na sala em tempo real.
+6. Quando todos os turnos de uma convocação são concluídos, uma decisão é consolidada como proposta. Aprove-a na lateral da tela.
+7. Recarregue a página: o estado dos avatares, da convocação e da decisão aprovada persiste. Em uma nova conversa, pergunte sobre o mesmo assunto — Neto recupera a decisão aprovada diretamente, sem nova convocação.
+
+A arte dos avatares (Entrega 4A) usa placeholders geométricos gerados por código — sprites/retratos pixel art definitivos ficam para uma etapa com ferramenta de geração de imagem. O mapa da sala (Entrega 4B) usa um template local fixo (`recepcao_padrao`); a loja de mapas e a criação de espaços (V1/V2) ficam para depois do piloto.
 
 ## Pré-requisitos
 
