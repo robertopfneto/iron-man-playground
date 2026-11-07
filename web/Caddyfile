@@ -1,0 +1,22 @@
+:8000 {
+	encode gzip
+
+	handle /static/* {
+		root * /srv/static
+		file_server
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle /admin/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
