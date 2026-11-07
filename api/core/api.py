@@ -342,3 +342,55 @@ def listar_decisoes(request, projeto_id: int):
         {"id": d.id, "texto": d.texto, "situacao": d.situacao}
         for d in projeto.decisoes.all()
     ]
+
+
+# --- Entrega 4: sala 2D ligada ao trabalho real ----------------------------
+
+ESTADO_DISPONIVEL = "disponivel"
+
+_SITUACAO_TURNO_PARA_ESTADO = {
+    Turno.SITUACAO_CONVOCADO: "convocado",
+    Turno.SITUACAO_EM_ANDAMENTO: "em_andamento",
+    Turno.SITUACAO_AGUARDANDO_REVISAO: "aguardando_revisao",
+    Turno.SITUACAO_CONCLUIDO: "concluido",
+}
+
+TEMPLATE_PADRAO_ID = "recepcao_padrao"
+
+
+@api.get("/projetos/{projeto_id}/sala", auth=django_auth)
+def obter_sala(request, projeto_id: int, template_id: Optional[str] = None):
+    """Estado visual da sala (Entrega 4). O mapa é só uma escolha visual no frontend;
+    aqui só resolvemos o template_id (com fallback) e o estado de cada avatar."""
+    projeto = get_object_or_404(Projeto, pk=projeto_id)
+
+    acessos = AcessoAgente.objects.filter(projeto=projeto, ativo=True).select_related("agente")
+    avatares = []
+    for acesso in acessos:
+        ultimo_turno = (
+            Turno.objects.filter(agente=acesso.agente, convocacao__projeto=projeto)
+            .order_by("-criado_em")
+            .first()
+        )
+        estado = ESTADO_DISPONIVEL
+        if ultimo_turno is not None and ultimo_turno.situacao in _SITUACAO_TURNO_PARA_ESTADO:
+            # "concluído" só reflete um turno concluído sem convocação nova aberta depois.
+            estado = _SITUACAO_TURNO_PARA_ESTADO[ultimo_turno.situacao]
+
+        avatares.append(
+            {
+                "agente_id": acesso.agente.id,
+                "avatar_id": acesso.agente.nome.lower(),
+                "nome": acesso.agente.nome,
+                "homenagem": acesso.agente.homenagem,
+                "especialidade": acesso.agente.especialidade,
+                "estado": estado,
+            }
+        )
+
+    template_resolvido = template_id or TEMPLATE_PADRAO_ID
+    return {
+        "projeto_id": projeto.id,
+        "template_id": template_resolvido,
+        "avatares": avatares,
+    }

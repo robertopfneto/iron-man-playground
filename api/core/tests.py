@@ -284,3 +284,60 @@ class ChatDelegacaoTests(TestCase):
         turno = Turno.objects.get(pk=turno_id)
         self.assertEqual(turno.resultado, "Primeira versão.")
         self.assertEqual(Decisao.objects.filter(convocacao_id=convocacao_id).count(), 1)
+
+
+class SalaTests(TestCase):
+    """Entrega 4: estado visual dos avatares a partir dos turnos reais."""
+
+    def setUp(self):
+        from django.core.management import call_command
+
+        call_command("seed_demo")
+        self.client_logado = Client()
+        get_user_model().objects.create_user(username="usuario4", password="senha-teste-123")
+        self.client_logado.login(username="usuario4", password="senha-teste-123")
+        self.projeto = Projeto.objects.get(nome="Projeto pessoal demonstrativo")
+
+    def test_avatares_comecam_disponiveis_e_template_tem_fallback(self):
+        resp = self.client_logado.get(f"/api/projetos/{self.projeto.id}/sala")
+        self.assertEqual(resp.status_code, 200)
+        corpo = resp.json()
+        self.assertEqual(corpo["template_id"], "recepcao_padrao")
+        estados = {a["nome"]: a["estado"] for a in corpo["avatares"]}
+        self.assertEqual(estados, {"Neto": "disponivel", "Hamilton": "disponivel"})
+
+    def test_template_id_invalido_ainda_cai_no_fallback_quando_vazio(self):
+        resp = self.client_logado.get(f"/api/projetos/{self.projeto.id}/sala?template_id=")
+        self.assertEqual(resp.json()["template_id"], "recepcao_padrao")
+
+    def test_avatar_reflete_turno_convocado_e_depois_concluido(self):
+        from core.models import Agente
+
+        hamilton = Agente.objects.get(nome="Hamilton")
+        conversa = self.client_logado.post(
+            "/api/conversas", data={"projeto_id": self.projeto.id}, content_type="application/json"
+        ).json()
+        proposta = self.client_logado.post(
+            f"/api/conversas/{conversa['id']}/mensagens",
+            data={"conteudo": "Preciso alterar o comando de instalação aqui."},
+            content_type="application/json",
+        ).json()
+        confirmada = self.client_logado.post(
+            f"/api/convocacoes/{proposta['convocacao_id']}/confirmar",
+            data={"agentes_ids": [hamilton.id]},
+            content_type="application/json",
+        ).json()
+
+        resp_convocado = self.client_logado.get(f"/api/projetos/{self.projeto.id}/sala")
+        estados = {a["nome"]: a["estado"] for a in resp_convocado.json()["avatares"]}
+        self.assertEqual(estados["Hamilton"], "convocado")
+
+        turno_id = confirmada["turnos"][0]
+        self.client_logado.post(
+            f"/api/turnos/{turno_id}/resultado",
+            data={"resultado": "Concluído.", "autoria": "usuario4"},
+            content_type="application/json",
+        )
+        resp_concluido = self.client_logado.get(f"/api/projetos/{self.projeto.id}/sala")
+        estados2 = {a["nome"]: a["estado"] for a in resp_concluido.json()["avatares"]}
+        self.assertEqual(estados2["Hamilton"], "concluido")

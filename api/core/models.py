@@ -33,6 +33,13 @@ class Agente(models.Model):
     formato_entrega = models.CharField(max_length=200, blank=True)
     demo = models.BooleanField(default=False)
 
+    # Metadados de direção de arte da Entrega 4A. Nenhuma foto ou dado pessoal
+    # é armazenado aqui — só texto descritivo de identidade visual e a fonte
+    # pública consultada, conforme docs/seguranca.md.
+    homenagem = models.CharField(max_length=200, blank=True)
+    direcao_arte = models.TextField(blank=True)
+    referencia_visual = models.TextField(blank=True)
+
     def __str__(self) -> str:
         return self.nome
 
