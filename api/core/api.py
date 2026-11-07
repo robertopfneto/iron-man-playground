@@ -1,10 +1,28 @@
 from typing import Optional
 
+from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from ninja import NinjaAPI, Schema
 from ninja.security import django_auth
 
-from core.models import AcessoAgente, Agente, ConfiguracaoModelo, Contexto, Projeto, Repositorio
+from core.logic import triar_mensagem
+from core.models import (
+    AcessoAgente,
+    Agente,
+    ConfiguracaoModelo,
+    Contexto,
+    Convocacao,
+    Conversa,
+    Decisao,
+    Mensagem,
+    Projeto,
+    Repositorio,
+    Turno,
+)
+
+LIMITE_CONVOCACOES_ABERTAS_POR_PROJETO = 3
+LIMITE_TAMANHO_TAREFA = 4000
 
 api = NinjaAPI(csrf=True, title="Escritório 2D API")
 
@@ -129,3 +147,198 @@ def obter_contexto(request, contexto_id: int):
         "formato_entrega": contexto.formato_entrega,
         "referencias": list(contexto.referencias.values_list("id", flat=True)),
     }
+
+
+# --- Entrega 3: chat do Neto, delegação e documentação --------------------
+
+
+class ConversaIn(Schema):
+    projeto_id: int
+
+
+@api.post("/conversas", auth=django_auth)
+def criar_conversa(request, payload: ConversaIn):
+    projeto = get_object_or_404(Projeto, pk=payload.projeto_id)
+    conversa = Conversa.objects.create(projeto=projeto)
+    return {"id": conversa.id, "projeto_id": projeto.id}
+
+
+def _proxima_ordem(conversa: Conversa) -> int:
+    ultima = conversa.mensagens.order_by("-ordem").first()
+    return (ultima.ordem + 1) if ultima else 1
+
+
+class MensagemIn(Schema):
+    conteudo: str
+
+
+@api.post("/conversas/{conversa_id}/mensagens", auth=django_auth)
+def enviar_mensagem(request, conversa_id: int, payload: MensagemIn):
+    """Triagem da mensagem do usuário por Neto. Modo manual: sem chamada de modelo."""
+    conversa = get_object_or_404(Conversa, pk=conversa_id)
+
+    with transaction.atomic():
+        mensagem_usuario = Mensagem.objects.create(
+            conversa=conversa,
+            autor=Mensagem.AUTOR_USUARIO,
+            conteudo=payload.conteudo,
+            ordem=_proxima_ordem(conversa),
+        )
+
+        resultado = triar_mensagem(conversa.projeto, payload.conteudo)
+
+        if resultado["tipo"] in ("resposta_direta", "duvida_simples"):
+            Mensagem.objects.create(
+                conversa=conversa,
+                autor=Mensagem.AUTOR_NETO,
+                conteudo=resultado["resposta"],
+                ordem=_proxima_ordem(conversa),
+            )
+            return {"mensagem_id": mensagem_usuario.id, **resultado}
+
+        convocacoes_abertas = Convocacao.objects.filter(
+            projeto=conversa.projeto, situacao=Convocacao.SITUACAO_PROPOSTA
+        ).count()
+        if convocacoes_abertas >= LIMITE_CONVOCACOES_ABERTAS_POR_PROJETO:
+            Mensagem.objects.create(
+                conversa=conversa,
+                autor=Mensagem.AUTOR_NETO,
+                conteudo="Limite de convocações abertas atingido neste projeto. Conclua ou cancele alguma antes de propor outra.",
+                ordem=_proxima_ordem(conversa),
+            )
+            return {"mensagem_id": mensagem_usuario.id, "tipo": "limite_atingido"}
+
+        if len(payload.conteudo) > LIMITE_TAMANHO_TAREFA:
+            return _negativa_generica(request, status=400)
+
+        convocacao = Convocacao.objects.create(
+            projeto=conversa.projeto,
+            conversa=conversa,
+            mensagem_origem=mensagem_usuario,
+            tarefa=payload.conteudo,
+        )
+        Mensagem.objects.create(
+            conversa=conversa,
+            autor=Mensagem.AUTOR_NETO,
+            conteudo=resultado["prompt_copiavel"],
+            ordem=_proxima_ordem(conversa),
+        )
+        return {
+            "mensagem_id": mensagem_usuario.id,
+            "tipo": "proposta_convocacao",
+            "convocacao_id": convocacao.id,
+            "prompt_copiavel": resultado["prompt_copiavel"],
+            "agentes_sugeridos": resultado["agentes_sugeridos"],
+        }
+
+
+class ConfirmarConvocacaoIn(Schema):
+    agentes_ids: list[int]
+
+
+@api.post("/convocacoes/{convocacao_id}/confirmar", auth=django_auth)
+def confirmar_convocacao(request, convocacao_id: int, payload: ConfirmarConvocacaoIn):
+    convocacao = get_object_or_404(Convocacao, pk=convocacao_id)
+
+    if convocacao.situacao != Convocacao.SITUACAO_PROPOSTA:
+        # Confirmação repetida: não duplica turnos, apenas devolve o estado atual.
+        return {
+            "id": convocacao.id,
+            "situacao": convocacao.situacao,
+            "turnos": list(convocacao.turnos.values_list("id", flat=True)),
+        }
+
+    ids_unicos = set(payload.agentes_ids)
+    autorizados = set(
+        AcessoAgente.objects.filter(
+            projeto=convocacao.projeto, agente_id__in=ids_unicos, ativo=True
+        ).values_list("agente_id", flat=True)
+    )
+    if autorizados != ids_unicos:
+        return _negativa_generica(request)
+
+    with transaction.atomic():
+        turnos = [
+            Turno.objects.create(convocacao=convocacao, agente_id=agente_id, tarefa=convocacao.tarefa)
+            for agente_id in ids_unicos
+        ]
+        convocacao.situacao = Convocacao.SITUACAO_CONFIRMADA
+        convocacao.save(update_fields=["situacao"])
+
+    return {"id": convocacao.id, "situacao": convocacao.situacao, "turnos": [t.id for t in turnos]}
+
+
+class TurnoResultadoIn(Schema):
+    resultado: str
+    autoria: str = ""
+
+
+@api.post("/turnos/{turno_id}/resultado", auth=django_auth)
+def registrar_resultado_turno(request, turno_id: int, payload: TurnoResultadoIn):
+    turno = get_object_or_404(Turno, pk=turno_id)
+
+    if turno.situacao == Turno.SITUACAO_CONCLUIDO:
+        # Idempotente: não sobrescreve um turno já concluído.
+        return {"id": turno.id, "situacao": turno.situacao}
+
+    turno.resultado = payload.resultado
+    turno.autoria = payload.autoria
+    turno.situacao = Turno.SITUACAO_CONCLUIDO
+    turno.concluido_em = timezone.now()
+    turno.save(update_fields=["resultado", "autoria", "situacao", "concluido_em"])
+
+    convocacao = turno.convocacao
+    if not convocacao.turnos.exclude(situacao=Turno.SITUACAO_CONCLUIDO).exists():
+        convocacao.situacao = Convocacao.SITUACAO_CONCLUIDA
+        convocacao.save(update_fields=["situacao"])
+        Decisao.objects.get_or_create(
+            convocacao=convocacao,
+            defaults={
+                "projeto": convocacao.projeto,
+                "texto": "\n\n".join(
+                    f"{t.agente.nome}: {t.resultado}" for t in convocacao.turnos.all()
+                ),
+            },
+        )
+
+    return {"id": turno.id, "situacao": turno.situacao}
+
+
+@api.get("/convocacoes/{convocacao_id}", auth=django_auth)
+def obter_convocacao(request, convocacao_id: int):
+    convocacao = get_object_or_404(Convocacao, pk=convocacao_id)
+    return {
+        "id": convocacao.id,
+        "situacao": convocacao.situacao,
+        "tarefa": convocacao.tarefa,
+        "turnos": [
+            {
+                "id": t.id,
+                "agente_id": t.agente_id,
+                "agente": t.agente.nome,
+                "situacao": t.situacao,
+                "resultado": t.resultado,
+                "autoria": t.autoria,
+            }
+            for t in convocacao.turnos.all()
+        ],
+    }
+
+
+@api.post("/decisoes/{decisao_id}/aprovar", auth=django_auth)
+def aprovar_decisao(request, decisao_id: int):
+    decisao = get_object_or_404(Decisao, pk=decisao_id)
+    if decisao.situacao != Decisao.SITUACAO_APROVADA:
+        decisao.situacao = Decisao.SITUACAO_APROVADA
+        decisao.aprovada_em = timezone.now()
+        decisao.save(update_fields=["situacao", "aprovada_em"])
+    return {"id": decisao.id, "situacao": decisao.situacao}
+
+
+@api.get("/projetos/{projeto_id}/decisoes", auth=django_auth)
+def listar_decisoes(request, projeto_id: int):
+    projeto = get_object_or_404(Projeto, pk=projeto_id)
+    return [
+        {"id": d.id, "texto": d.texto, "situacao": d.situacao}
+        for d in projeto.decisoes.all()
+    ]

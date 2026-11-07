@@ -69,6 +69,102 @@ class ConfiguracaoModelo(models.Model):
         return f"Config de {self.agente.nome}"
 
 
+class Conversa(models.Model):
+    projeto = models.ForeignKey(Projeto, on_delete=models.CASCADE, related_name="conversas")
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"Conversa #{self.id} ({self.projeto.nome})"
+
+
+class Mensagem(models.Model):
+    AUTOR_USUARIO = "usuario"
+    AUTOR_NETO = "neto"
+    AUTOR_CHOICES = [(AUTOR_USUARIO, "Usuário"), (AUTOR_NETO, "Neto")]
+
+    conversa = models.ForeignKey(Conversa, on_delete=models.CASCADE, related_name="mensagens")
+    autor = models.CharField(max_length=20, choices=AUTOR_CHOICES)
+    conteudo = models.TextField()
+    ordem = models.PositiveIntegerField()
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["ordem"]
+
+    def __str__(self) -> str:
+        return f"{self.autor}: {self.conteudo[:40]}"
+
+
+class Convocacao(models.Model):
+    SITUACAO_PROPOSTA = "proposta"
+    SITUACAO_CONFIRMADA = "confirmada"
+    SITUACAO_CONCLUIDA = "concluida"
+    SITUACAO_CHOICES = [
+        (SITUACAO_PROPOSTA, "Proposta"),
+        (SITUACAO_CONFIRMADA, "Confirmada"),
+        (SITUACAO_CONCLUIDA, "Concluída"),
+    ]
+
+    projeto = models.ForeignKey(Projeto, on_delete=models.CASCADE, related_name="convocacoes")
+    conversa = models.ForeignKey(Conversa, on_delete=models.CASCADE, related_name="convocacoes")
+    mensagem_origem = models.ForeignKey(Mensagem, on_delete=models.CASCADE, related_name="convocacoes")
+    tarefa = models.TextField()
+    situacao = models.CharField(max_length=20, choices=SITUACAO_CHOICES, default=SITUACAO_PROPOSTA)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"Convocação #{self.id} ({self.get_situacao_display()})"
+
+
+class Turno(models.Model):
+    SITUACAO_CONVOCADO = "convocado"
+    SITUACAO_EM_ANDAMENTO = "em_andamento"
+    SITUACAO_AGUARDANDO_REVISAO = "aguardando_revisao"
+    SITUACAO_CONCLUIDO = "concluido"
+    SITUACAO_CHOICES = [
+        (SITUACAO_CONVOCADO, "Convocado"),
+        (SITUACAO_EM_ANDAMENTO, "Em andamento"),
+        (SITUACAO_AGUARDANDO_REVISAO, "Aguardando revisão"),
+        (SITUACAO_CONCLUIDO, "Concluído"),
+    ]
+
+    convocacao = models.ForeignKey(Convocacao, on_delete=models.CASCADE, related_name="turnos")
+    agente = models.ForeignKey(Agente, on_delete=models.CASCADE, related_name="turnos")
+    tarefa = models.TextField()
+    formato_entrega = models.CharField(max_length=200, blank=True)
+    situacao = models.CharField(max_length=20, choices=SITUACAO_CHOICES, default=SITUACAO_CONVOCADO)
+    resultado = models.TextField(blank=True)
+    autoria = models.CharField(max_length=100, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    concluido_em = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"Turno de {self.agente.nome} ({self.get_situacao_display()})"
+
+
+class Decisao(models.Model):
+    SITUACAO_PROPOSTA = "proposta"
+    SITUACAO_APROVADA = "aprovada"
+    SITUACAO_REJEITADA = "rejeitada"
+    SITUACAO_CHOICES = [
+        (SITUACAO_PROPOSTA, "Proposta"),
+        (SITUACAO_APROVADA, "Aprovada"),
+        (SITUACAO_REJEITADA, "Rejeitada"),
+    ]
+
+    projeto = models.ForeignKey(Projeto, on_delete=models.CASCADE, related_name="decisoes")
+    convocacao = models.ForeignKey(
+        Convocacao, on_delete=models.SET_NULL, related_name="decisoes", null=True, blank=True
+    )
+    texto = models.TextField()
+    situacao = models.CharField(max_length=20, choices=SITUACAO_CHOICES, default=SITUACAO_PROPOSTA)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    aprovada_em = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"Decisão #{self.id} ({self.get_situacao_display()})"
+
+
 class Contexto(models.Model):
     """Contexto de uma tarefa, escopado a um projeto e a um agente autorizado nele."""
 

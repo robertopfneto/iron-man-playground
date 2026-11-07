@@ -5,8 +5,13 @@ from core.models import (
     Agente,
     ConfiguracaoModelo,
     Contexto,
+    Convocacao,
+    Conversa,
+    Decisao,
+    Mensagem,
     Projeto,
     Repositorio,
+    Turno,
 )
 
 
@@ -40,3 +45,32 @@ class ConfiguracaoModeloAdmin(admin.ModelAdmin):
 class ContextoAdmin(admin.ModelAdmin):
     list_display = ("projeto", "agente", "formato_entrega", "criado_em")
     list_filter = ("projeto", "agente")
+
+
+@admin.register(Conversa)
+class ConversaAdmin(admin.ModelAdmin):
+    list_display = ("id", "projeto", "criado_em")
+
+
+@admin.register(Mensagem)
+class MensagemAdmin(admin.ModelAdmin):
+    list_display = ("conversa", "autor", "ordem", "criado_em")
+    list_filter = ("autor",)
+
+
+@admin.register(Convocacao)
+class ConvocacaoAdmin(admin.ModelAdmin):
+    list_display = ("id", "projeto", "situacao", "criado_em")
+    list_filter = ("projeto", "situacao")
+
+
+@admin.register(Turno)
+class TurnoAdmin(admin.ModelAdmin):
+    list_display = ("convocacao", "agente", "situacao", "criado_em")
+    list_filter = ("agente", "situacao")
+
+
+@admin.register(Decisao)
+class DecisaoAdmin(admin.ModelAdmin):
+    list_display = ("projeto", "situacao", "criado_em", "aprovada_em")
+    list_filter = ("projeto", "situacao")

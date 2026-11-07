@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
-from core.models import Agente, Contexto, Projeto, Repositorio
+from core.models import Agente, Contexto, Decisao, Projeto, Repositorio, Turno
 
 
 class HealthTests(TestCase):
@@ -137,3 +137,150 @@ class CatalogoEContextoTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         nomes = {a["nome"] for a in resp.json()}
         self.assertEqual(nomes, {"Neto", "Hamilton"})
+
+
+class ChatDelegacaoTests(TestCase):
+    """Entrega 3: triagem, convocação, turnos e decisão aprovada/recuperada."""
+
+    def setUp(self):
+        from django.core.management import call_command
+
+        call_command("seed_demo")
+        self.client_logado = Client()
+        get_user_model().objects.create_user(username="usuario3", password="senha-teste-123")
+        self.client_logado.login(username="usuario3", password="senha-teste-123")
+        self.projeto = Projeto.objects.get(nome="Projeto pessoal demonstrativo")
+
+    def _nova_conversa(self):
+        resp = self.client_logado.post(
+            "/api/conversas", data={"projeto_id": self.projeto.id}, content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        return resp.json()["id"]
+
+    def test_duvida_simples_encerra_sem_convocacao(self):
+        conversa_id = self._nova_conversa()
+        resp = self.client_logado.post(
+            f"/api/conversas/{conversa_id}/mensagens",
+            data={"conteudo": "Oi Neto, só testando."},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["tipo"], "duvida_simples")
+
+    def test_pedido_de_mudanca_gera_convocacao_hamilton_e_kernighan(self):
+        from core.models import Agente
+
+        conversa_id = self._nova_conversa()
+        resp = self.client_logado.post(
+            f"/api/conversas/{conversa_id}/mensagens",
+            data={"conteudo": "Preciso alterar o comando de instalação deste projeto pessoal."},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        corpo = resp.json()
+        self.assertEqual(corpo["tipo"], "proposta_convocacao")
+
+        hamilton = Agente.objects.get(nome="Hamilton")
+        self.assertIn(hamilton.id, corpo["agentes_sugeridos"])
+        # Kernighan não está autorizado no "Projeto pessoal demonstrativo" no seed,
+        # então a sugestão respeita o escopo e não o inclui.
+        kernighan = Agente.objects.get(nome="Kernighan")
+        self.assertNotIn(kernighan.id, corpo["agentes_sugeridos"])
+
+        resp_confirma = self.client_logado.post(
+            f"/api/convocacoes/{corpo['convocacao_id']}/confirmar",
+            data={"agentes_ids": [hamilton.id]},
+            content_type="application/json",
+        )
+        self.assertEqual(resp_confirma.status_code, 200)
+        turno_id = resp_confirma.json()["turnos"][0]
+
+        resp_resultado = self.client_logado.post(
+            f"/api/turnos/{turno_id}/resultado",
+            data={"resultado": "Proposta de novo comando de instalação.", "autoria": "usuario3"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp_resultado.status_code, 200)
+
+        convocacao = self.client_logado.get(f"/api/convocacoes/{corpo['convocacao_id']}").json()
+        self.assertEqual(convocacao["situacao"], "concluida")
+
+        decisao = Decisao.objects.get(convocacao_id=corpo["convocacao_id"])
+        self.assertEqual(decisao.situacao, Decisao.SITUACAO_PROPOSTA)
+
+        resp_aprova = self.client_logado.post(f"/api/decisoes/{decisao.id}/aprovar")
+        self.assertEqual(resp_aprova.status_code, 200)
+        decisao.refresh_from_db()
+        self.assertEqual(decisao.situacao, Decisao.SITUACAO_APROVADA)
+
+    def test_confirmacao_repetida_nao_duplica_turnos(self):
+        from core.models import Agente
+
+        conversa_id = self._nova_conversa()
+        resp = self.client_logado.post(
+            f"/api/conversas/{conversa_id}/mensagens",
+            data={"conteudo": "Preciso alterar o comando de instalação deste projeto."},
+            content_type="application/json",
+        )
+        convocacao_id = resp.json()["convocacao_id"]
+        hamilton = Agente.objects.get(nome="Hamilton")
+
+        primeira = self.client_logado.post(
+            f"/api/convocacoes/{convocacao_id}/confirmar",
+            data={"agentes_ids": [hamilton.id]},
+            content_type="application/json",
+        )
+        segunda = self.client_logado.post(
+            f"/api/convocacoes/{convocacao_id}/confirmar",
+            data={"agentes_ids": [hamilton.id]},
+            content_type="application/json",
+        )
+        self.assertEqual(primeira.json()["turnos"], segunda.json()["turnos"])
+        self.assertEqual(Turno.objects.filter(convocacao_id=convocacao_id).count(), 1)
+
+    def test_decisao_aprovada_e_recuperada_em_outra_conversa_no_mesmo_projeto(self):
+        Decisao.objects.create(
+            projeto=self.projeto,
+            texto="Use docker compose up --build -d --wait para instalar.",
+            situacao=Decisao.SITUACAO_APROVADA,
+        )
+        conversa_id = self._nova_conversa()
+        resp = self.client_logado.post(
+            f"/api/conversas/{conversa_id}/mensagens",
+            data={"conteudo": "Qual foi a decisão sobre o comando compose de instalação?"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["tipo"], "resposta_direta")
+
+    def test_resultado_de_turno_concluido_e_idempotente(self):
+        from core.models import Agente
+
+        conversa_id = self._nova_conversa()
+        resp = self.client_logado.post(
+            f"/api/conversas/{conversa_id}/mensagens",
+            data={"conteudo": "Preciso alterar o comando de instalação aqui."},
+            content_type="application/json",
+        )
+        convocacao_id = resp.json()["convocacao_id"]
+        hamilton = Agente.objects.get(nome="Hamilton")
+        turno_id = self.client_logado.post(
+            f"/api/convocacoes/{convocacao_id}/confirmar",
+            data={"agentes_ids": [hamilton.id]},
+            content_type="application/json",
+        ).json()["turnos"][0]
+
+        self.client_logado.post(
+            f"/api/turnos/{turno_id}/resultado",
+            data={"resultado": "Primeira versão.", "autoria": "usuario3"},
+            content_type="application/json",
+        )
+        self.client_logado.post(
+            f"/api/turnos/{turno_id}/resultado",
+            data={"resultado": "Tentativa de sobrescrever.", "autoria": "usuario3"},
+            content_type="application/json",
+        )
+        turno = Turno.objects.get(pk=turno_id)
+        self.assertEqual(turno.resultado, "Primeira versão.")
+        self.assertEqual(Decisao.objects.filter(convocacao_id=convocacao_id).count(), 1)
