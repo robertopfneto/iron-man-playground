@@ -4,9 +4,17 @@ services:
     environment:
       - DJANGO_ALLOWED_HOSTS=web,127.0.0.1,localhost
       - DJANGO_DEBUG=0
+      - OLLAMA_URL=http://ollama:11434
+      - EMBEDDINGS_MODELO=${EMBEDDINGS_MODELO:-bge-m3}
+      # Token fine-grained só de leitura (Contents: read) dos repositórios autorizados.
+      # Fica no .env (fora do Git), nunca no banco, no prompt ou na sandbox.
+      - GITHUB_TOKEN_LEITURA=${GITHUB_TOKEN_LEITURA:-}
     volumes:
       - db_data:/app/data
       - static_data:/app/staticfiles
+    networks:
+      - default
+      - ia
     expose:
       - "8000"
     healthcheck:
@@ -26,6 +34,8 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - static_data:/srv/static:ro
+    networks:
+      - default
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/api/health"]
       interval: 10s
@@ -34,6 +44,20 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # Embeddings locais da base de conhecimento. Sem porta publicada: só a API o alcança pela rede "ia".
+  ollama:
+    image: ollama/ollama:0.32.5
+    volumes:
+      - ollama_modelos:/root/.ollama
+    networks:
+      - ia
+    restart: unless-stopped
+
+networks:
+  default:
+  ia:
+
 volumes:
   db_data:
   static_data:
+  ollama_modelos:

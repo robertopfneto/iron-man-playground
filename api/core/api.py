@@ -29,6 +29,7 @@ LIMITE_CONVOCACOES_ABERTAS_POR_PROJETO = 3
 LIMITE_TAMANHO_TAREFA = 4000
 
 api = NinjaAPI(csrf=True, title="Escritório 2D API")
+api.add_router("/conhecimento", "conhecimento.api.router")
 
 
 def _negativa_generica(request, status=404):
@@ -248,7 +249,7 @@ def enviar_mensagem(request, conversa_id: int, payload: MensagemIn):
 
         resultado = triar_mensagem(conversa.projeto, payload.conteudo)
 
-        if resultado["tipo"] in ("resposta_direta", "duvida_simples"):
+        if resultado["tipo"] in ("resposta_direta", "duvida_simples", "resposta_documentada", "sem_evidencia"):
             Mensagem.objects.create(
                 conversa=conversa,
                 autor=Mensagem.AUTOR_NETO,

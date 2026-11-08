@@ -5,9 +5,21 @@ import { ESTADO_LABEL } from "./room/avatares";
 
 type AgenteProjeto = { agente_id: number; nome: string };
 
+type Evidencia = {
+  repositorio: string;
+  caminho: string;
+  secao: string;
+  linhas: string;
+  commit: string;
+  link: string;
+  origem: string;
+};
+
 type RespostaMensagem =
   | { tipo: "duvida_simples"; resposta: string }
   | { tipo: "resposta_direta"; resposta: string }
+  | { tipo: "resposta_documentada"; resposta: string; evidencias: Evidencia[]; avisos: string[] }
+  | { tipo: "sem_evidencia"; resposta: string; avisos: string[] }
   | {
       tipo: "proposta_convocacao";
       convocacao_id: number;
@@ -22,7 +34,8 @@ type Convocacao = { id: number; situacao: string; tarefa: string; turnos: Turno[
 type Item =
   | { tipo: "usuario"; texto: string }
   | { tipo: "neto"; texto: string }
-  | { tipo: "prompt"; texto: string };
+  | { tipo: "prompt"; texto: string }
+  | { tipo: "evidencias"; lista: Evidencia[]; avisos: string[] };
 
 type Props = {
   conversaId: number;
@@ -59,6 +72,19 @@ export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Prop
       });
 
       if (resp.tipo === "duvida_simples" || resp.tipo === "resposta_direta") {
+        setHistorico((h) => [...h, { tipo: "neto", texto: resp.resposta }]);
+        return;
+      }
+      if (resp.tipo === "resposta_documentada") {
+        const corpo = resp.resposta.split("\nFontes:")[0].trim();
+        setHistorico((h) => [
+          ...h,
+          { tipo: "neto", texto: corpo },
+          { tipo: "evidencias", lista: resp.evidencias, avisos: resp.avisos },
+        ]);
+        return;
+      }
+      if (resp.tipo === "sem_evidencia") {
         setHistorico((h) => [...h, { tipo: "neto", texto: resp.resposta }]);
         return;
       }
@@ -142,7 +168,33 @@ export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Prop
           </p>
         )}
         {historico.map((item, i) =>
-          item.tipo === "prompt" ? (
+          item.tipo === "evidencias" ? (
+            <div key={i} className="evidencias" aria-label="Fontes consultadas">
+              <span className="bolha-autor">Fontes consultadas</span>
+              <ul>
+                {item.lista.map((e, j) => (
+                  <li key={j}>
+                    {e.link.startsWith("https://") ? (
+                      <a href={e.link} target="_blank" rel="noreferrer">
+                        {e.secao}
+                      </a>
+                    ) : (
+                      <span>{e.secao}</span>
+                    )}
+                    <code>
+                      {e.repositorio}/{e.caminho} {e.linhas} @ {e.commit.slice(0, 12)}
+                    </code>
+                    {e.origem === "relacao" && <span className="badge st-concluido">relacionado</span>}
+                  </li>
+                ))}
+              </ul>
+              {item.avisos.map((a, j) => (
+                <p key={j} className="aviso">
+                  {a}
+                </p>
+              ))}
+            </div>
+          ) : item.tipo === "prompt" ? (
             <div key={i} className="prompt-copiavel">
               <div className="topo">
                 <span>Prompt para triagem manual</span>

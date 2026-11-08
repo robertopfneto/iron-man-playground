@@ -547,6 +547,48 @@ label.rotulo {
   color: var(--text-muted);
 }
 
+.evidencias {
+  align-self: stretch;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.evidencias ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.evidencias li {
+  display: grid;
+  gap: 2px;
+}
+
+.evidencias a {
+  color: var(--accent);
+}
+
+.evidencias code {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.evidencias .badge {
+  justify-self: start;
+}
+
+.evidencias .aviso {
+  margin: 8px 0 0;
+  color: var(--st-convocado);
+  font-size: 12px;
+}
+
 .painel {
   border-top: 1px solid var(--border);
   padding: 14px 18px;

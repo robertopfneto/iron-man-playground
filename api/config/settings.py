@@ -123,3 +123,7 @@ CONHECIMENTO_DIR_FONTES_LOCAIS = os.environ.get("CONHECIMENTO_DIR_FONTES_LOCAIS"
 CONHECIMENTO_EMBEDDER = os.environ.get("CONHECIMENTO_EMBEDDER", "conhecimento.embeddings.OllamaEmbedder")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434")
 EMBEDDINGS_MODELO = os.environ.get("EMBEDDINGS_MODELO", "bge-m3")
+CONHECIMENTO_MAX_TRECHOS = int(os.environ.get("CONHECIMENTO_MAX_TRECHOS", "4"))
+CONHECIMENTO_ORCAMENTO_CARACTERES = int(os.environ.get("CONHECIMENTO_ORCAMENTO_CARACTERES", "2400"))
+# Calibrado com bge-m3 nas perguntas de docs/conhecimento/comparacao.md.
+CONHECIMENTO_LIMIAR_VETORIAL = float(os.environ.get("CONHECIMENTO_LIMIAR_VETORIAL", "0.45"))

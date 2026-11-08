@@ -17,6 +17,17 @@ As regras são aplicadas pelo backend e pelo isolamento do sistema operacional. 
 | Before | Não modelada ainda. Quando entrar, fica como catálogo sem acesso operacional. |
 | Sandbox por tarefa / AI Jail | Não habilitado. Ver seção 3 do plano original e a Entrega 6. |
 
+## Base de conhecimento (ingestão de repositórios)
+
+| Componente | Fronteira |
+|---|---|
+| Leitura do Git | Espelho bare na API; só `fetch`, `ls-tree`, `cat-file`, `diff-tree`. Sem checkout, sem hooks, sem executar código do repositório. |
+| Origem | Só `https://github.com/<conta>/<repo>` cadastrado (conta e nome conferidos) ou repositório demo na pasta autorizada. |
+| Credencial | Token fine-grained só leitura em `.env` (`GITHUB_TOKEN_LEITURA`), passado ao Git por variável de ambiente. Fora do banco, dos logs e dos prompts. |
+| Busca | Escopo = sessão + vínculo do agente com o projeto, aplicado antes da recuperação e de novo ao seguir relações. Negativa genérica fora do escopo. |
+| Before | Fora da ingestão e da busca até autorização explícita na fonte. |
+| Embeddings | Ollama local na rede `ia`, acessível só pela API; nenhum provedor externo. |
+
 ## Política de negação por padrão
 
 Negação por padrão por projeto, tipo de dado, agente, operação e destino. Separar leitura, edição, execução e envio para um provedor. A Before é catálogo sem acesso operacional. Dados sigilosos, biometria, credenciais e dados pessoais são classificados como restritos e ficam fora do notebook pessoal quando a política do projeto não autorizar a hospedagem.

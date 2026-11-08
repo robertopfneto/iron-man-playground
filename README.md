@@ -21,6 +21,21 @@ Protótipo de escritório virtual 2D para conduzir sessões com Neto (coordenado
 
 A loja de mapas e a criação de espaços (V1/V2) ficam para depois do piloto.
 
+## Base de conhecimento dos repositórios
+
+Neto responde perguntas sobre os repositórios autorizados de cada projeto com trechos da documentação
+Markdown, citando repositório, caminho, seção, linhas e commit. Os arquivos no Git são a fonte oficial: o
+índice (SQLite + FTS5), os vetores (bge-m3 no serviço `ollama` do Compose) e o grafo de links são derivados e
+podem ser reconstruídos. Para configurar as primeiras fontes (token de leitura, cadastro no Admin,
+sincronização manual e por cron), ver [`docs/conhecimento/README.md`](docs/conhecimento/README.md).
+
+```bash
+docker compose exec ollama ollama pull bge-m3                      # uma vez
+docker compose exec api python manage.py preparar_fontes_demo      # repositórios fictícios de demonstração
+docker compose exec api python manage.py sincronizar_fontes        # git fetch + atualização incremental
+docker compose exec -T api python manage.py comparar_busca > docs/conhecimento/comparacao.md
+```
+
 ## Pré-requisitos
 
 Git, Docker Engine e Docker Compose instalados no notebook. O primeiro build baixa as imagens e dependências (Python e Node são instalados durante o build, não no host).
