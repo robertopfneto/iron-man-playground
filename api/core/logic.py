@@ -23,6 +23,7 @@ PALAVRAS_MUDANCA_CODIGO = (
 )
 
 LIMITE_TAMANHO_DUVIDA_SIMPLES = 80
+COORDENADOR = "Neto"
 
 
 def _busca_decisao_aprovada(projeto, texto: str):
@@ -74,8 +75,11 @@ def triar_mensagem(projeto, texto: str) -> dict:
             "resposta": "Anotado. Não é necessário convocar ninguém para isso.",
         }
 
+    # Neto coordena a convocação; ele não é convocado como especialista.
     agentes_sugeridos = list(
-        AcessoAgente.objects.filter(projeto=projeto, ativo=True).values_list("agente_id", flat=True)
+        AcessoAgente.objects.filter(projeto=projeto, ativo=True)
+        .exclude(agente__nome=COORDENADOR)
+        .values_list("agente_id", flat=True)
     )
     return {
         "tipo": "proposta_convocacao",

@@ -1,0 +1,13 @@
+# Fotos de referência dos avatares: privadas, nunca versionadas.
+referencias_privadas/
+
+# Python
+__pycache__/
+*.pyc
+
+# Node / build local
+node_modules/
+web/dist/
+
+# Configuração local
+.env

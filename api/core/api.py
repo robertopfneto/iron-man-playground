@@ -1,8 +1,12 @@
 from typing import Optional
 
+from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.middleware.csrf import get_token
 from ninja import NinjaAPI, Schema
 from ninja.security import django_auth
 
@@ -36,6 +40,63 @@ def _negativa_generica(request, status=404):
 def health(request):
     """Endpoint usado pelo healthcheck do Compose. Não exige sessão."""
     return {"status": "ok"}
+
+
+@api.get("/auth/sessao")
+def sessao(request):
+    """Estado da sessão. Também garante o cookie CSRF para o login da SPA."""
+    get_token(request)
+    if request.user.is_authenticated:
+        return {"autenticado": True, "usuario": request.user.get_username(), "precisa_cadastro": False}
+    return {
+        "autenticado": False,
+        "usuario": None,
+        "precisa_cadastro": not get_user_model().objects.exists(),
+    }
+
+
+class PrimeiroAcessoIn(Schema):
+    usuario: str
+    senha: str
+
+
+@api.post("/auth/primeiro-acesso")
+def primeiro_acesso(request, payload: PrimeiroAcessoIn):
+    """Cria a primeira conta (administradora) enquanto não existir nenhum usuário.
+    Depois disso o endpoint fica fechado; novas contas só pelo Django Admin."""
+    User = get_user_model()
+    with transaction.atomic():
+        if User.objects.select_for_update().exists():
+            return api.create_response(request, {"detail": "Cadastro inicial já realizado."}, status=403)
+        try:
+            validate_password(payload.senha)
+        except ValidationError as exc:
+            return api.create_response(request, {"detail": " ".join(exc.messages)}, status=400)
+        if not payload.usuario.strip():
+            return api.create_response(request, {"detail": "Informe um nome de usuário."}, status=400)
+        user = User.objects.create_superuser(username=payload.usuario.strip(), password=payload.senha)
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    return {"autenticado": True, "usuario": user.get_username()}
+
+
+class LoginIn(Schema):
+    usuario: str
+    senha: str
+
+
+@api.post("/auth/login")
+def entrar(request, payload: LoginIn):
+    user = authenticate(request, username=payload.usuario, password=payload.senha)
+    if user is None:
+        return api.create_response(request, {"detail": "Usuário ou senha inválidos."}, status=401)
+    login(request, user)
+    return {"autenticado": True, "usuario": user.get_username()}
+
+
+@api.post("/auth/logout", auth=django_auth)
+def sair(request):
+    logout(request)
+    return {"autenticado": False}
 
 
 @api.get("/projetos", auth=django_auth)
@@ -384,6 +445,8 @@ def obter_sala(request, projeto_id: int, template_id: Optional[str] = None):
                 "nome": acesso.agente.nome,
                 "homenagem": acesso.agente.homenagem,
                 "especialidade": acesso.agente.especialidade,
+                "direcao_arte": acesso.agente.direcao_arte,
+                "referencia_visual": acesso.agente.referencia_visual,
                 "estado": estado,
             }
         )

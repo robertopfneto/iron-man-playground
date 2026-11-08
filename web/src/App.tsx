@@ -1,142 +1,276 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
 import { ChatNeto } from "./ChatNeto";
-import { resolverTemplate } from "./room/mapas";
+import { Login } from "./Login";
+import {
+  ARTE_LABEL,
+  BASE_AVATARES,
+  buscarAvatar,
+  carregarManifestoAvatares,
+  ESTADO_LABEL,
+  ManifestoAvatares,
+} from "./room/avatares";
+import { resolverTemplate, TemplateMapa } from "./room/mapas";
 import { AvatarSala, SalaPhaser } from "./room/SalaPhaser";
 
 type Projeto = { id: number; nome: string; cenario: string };
 type Sala = { projeto_id: number; template_id: string; avatares: AvatarSala[] };
 type Decisao = { id: number; texto: string; situacao: string };
+type Sessao = { autenticado: boolean; usuario: string | null; precisa_cadastro?: boolean };
+
+const SITUACAO_DECISAO: Record<string, string> = {
+  proposta: "Proposta",
+  aprovada: "Aprovada",
+  rejeitada: "Rejeitada",
+};
 
 function App() {
-  const [status, setStatus] = useState<string>("verificando...");
-  const [autenticado, setAutenticado] = useState(false);
+  const [sessao, setSessao] = useState<Sessao | null>(null);
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [projetoId, setProjetoId] = useState<number | null>(null);
   const [sala, setSala] = useState<Sala | null>(null);
+  const [template, setTemplate] = useState<TemplateMapa | null>(null);
+  const [manifesto, setManifesto] = useState<ManifestoAvatares | null>(null);
   const [conversaId, setConversaId] = useState<number | null>(null);
   const [avatarSelecionadoId, setAvatarSelecionadoId] = useState<number | null>(null);
   const [decisoes, setDecisoes] = useState<Decisao[]>([]);
 
-  const avatarSelecionado =
-    sala?.avatares.find((a) => a.agente_id === avatarSelecionadoId) ?? null;
+  const avatarSelecionado = sala?.avatares.find((a) => a.agente_id === avatarSelecionadoId) ?? null;
+  const arteSelecionada = avatarSelecionado ? buscarAvatar(manifesto, avatarSelecionado.avatar_id) : null;
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((resp) => resp.json())
-      .then((data: { status: string }) => setStatus(data.status))
-      .catch(() => setStatus("indisponível"));
+    api<Sessao>("/auth/sessao")
+      .then(setSessao)
+      .catch(() => setSessao({ autenticado: false, usuario: null }));
+    carregarManifestoAvatares().then(setManifesto);
   }, []);
 
   useEffect(() => {
-    api<Projeto[]>("/projetos")
-      .then((lista) => {
-        setAutenticado(true);
-        setProjetos(lista);
-        if (lista.length > 0) setProjetoId(lista[0].id);
-      })
-      .catch(() => setAutenticado(false));
-  }, []);
+    if (!sessao?.autenticado) return;
+    api<Projeto[]>("/projetos").then((lista) => {
+      setProjetos(lista);
+      if (lista.length > 0) setProjetoId(lista[0].id);
+    });
+  }, [sessao?.autenticado]);
 
-  async function carregarSala(id: number) {
-    const dados = await api<Sala>(`/projetos/${id}/sala`);
-    setSala(dados);
-    const d = await api<Decisao[]>(`/projetos/${id}/decisoes`);
-    setDecisoes(d);
-  }
+  const carregarSala = useCallback(async (id: number) => {
+    const [dadosSala, dadosDecisoes] = await Promise.all([
+      api<Sala>(`/projetos/${id}/sala`),
+      api<Decisao[]>(`/projetos/${id}/decisoes`),
+    ]);
+    setTemplate(await resolverTemplate(dadosSala.template_id));
+    setSala(dadosSala);
+    setDecisoes(dadosDecisoes);
+  }, []);
 
   useEffect(() => {
     if (projetoId === null) return;
     setAvatarSelecionadoId(null);
+    setConversaId(null);
     carregarSala(projetoId);
     api<{ id: number }>("/conversas", {
       method: "POST",
       body: JSON.stringify({ projeto_id: projetoId }),
     }).then((c) => setConversaId(c.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projetoId]);
+  }, [projetoId, carregarSala]);
 
   async function aprovarDecisao(id: number) {
     await api(`/decisoes/${id}/aprovar`, { method: "POST" });
     if (projetoId !== null) carregarSala(projetoId);
   }
 
-  if (!autenticado) {
+  async function sair() {
+    await api("/auth/logout", { method: "POST" });
+    setSessao({ autenticado: false, usuario: null });
+    setProjetos([]);
+    setProjetoId(null);
+    setSala(null);
+  }
+
+  if (sessao === null) return null;
+
+  if (!sessao.autenticado) {
     return (
-      <main style={{ fontFamily: "sans-serif", padding: "2rem" }}>
-        <h1>Escritório 2D</h1>
-        <p>Status da API: {status}</p>
-        <p>
-          Faça login pelo <a href="/admin/login/">Django Admin</a> para acessar a sala e os projetos.
-        </p>
-      </main>
+      <Login
+        precisaCadastro={Boolean(sessao.precisa_cadastro)}
+        aoEntrar={(usuario) => setSessao({ autenticado: true, usuario })}
+      />
     );
   }
 
-  const template = sala ? resolverTemplate(sala.template_id) : resolverTemplate(undefined);
+  const projetoAtual = projetos.find((p) => p.id === projetoId);
 
   return (
-    <main style={{ fontFamily: "sans-serif", padding: "2rem", color: "#e8edf2" }}>
-      <h1>Escritório 2D</h1>
+    <>
+      <header className="topbar">
+        <div className="marca">
+          <span className="marca-icone" aria-hidden="true" />
+          Escritório 2D
+        </div>
+        <div className="seletor">
+          <label className="rotulo" htmlFor="projeto" style={{ margin: 0 }}>
+            Projeto
+          </label>
+          <select
+            id="projeto"
+            className="field"
+            value={projetoId ?? ""}
+            onChange={(e) => setProjetoId(Number(e.target.value))}
+          >
+            {projetos.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="usuario">
+          <span>{sessao.usuario}</span>
+          <button className="btn btn-ghost btn-sm" onClick={sair}>
+            Sair
+          </button>
+        </div>
+      </header>
 
-      <label>
-        Projeto:{" "}
-        <select value={projetoId ?? ""} onChange={(e) => setProjetoId(Number(e.target.value))}>
-          {projetos.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="layout">
+        <div className="coluna">
+          <section className="card">
+            <div className="card-titulo">
+              <h2>{template ? template.nome : "Sala"}</h2>
+              <span className="meta">
+                {projetoAtual?.cenario}
+                {template ? ` · mapa ${template.id} v${template.versao}` : ""}
+              </span>
+            </div>
+            {sala && template && manifesto ? (
+              <SalaPhaser
+                key={`${template.id}-${sala.avatares.map((a) => `${a.agente_id}:${a.estado}`).join(",")}`}
+                template={template}
+                manifesto={manifesto}
+                avatares={sala.avatares}
+                selecionadoId={avatarSelecionadoId}
+                onSelecionarAvatar={(avatar) => setAvatarSelecionadoId(avatar.agente_id)}
+              />
+            ) : (
+              <div className="sala-canvas sala-carregando">Carregando a sala…</div>
+            )}
 
-      <div style={{ display: "flex", gap: "1rem", marginTop: "1rem", flexWrap: "wrap" }}>
-        {sala && (
-          <SalaPhaser
-            key={`${template.id}-${sala.avatares.map((a) => `${a.agente_id}:${a.estado}`).join(",")}`}
-            template={template}
-            avatares={sala.avatares}
-            onSelecionarAvatar={(avatar) => setAvatarSelecionadoId(avatar.agente_id)}
+            {sala && (
+              <ul className="equipe" aria-label="Equipe do projeto">
+                {sala.avatares.map((a) => {
+                  const arte = buscarAvatar(manifesto, a.avatar_id);
+                  return (
+                    <li key={a.agente_id}>
+                      <button
+                        className="membro"
+                        aria-pressed={a.agente_id === avatarSelecionadoId}
+                        onClick={() => setAvatarSelecionadoId(a.agente_id)}
+                      >
+                        {arte && <img className="pixel" src={`${BASE_AVATARES}/${arte.simbolo}`} alt="" />}
+                        <span>{a.nome}</span>
+                        <span className={`ponto st-${a.estado}`} aria-hidden="true" />
+                        <span className="sr-only">{ESTADO_LABEL[a.estado]}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <div className="linha-2">
+            <section className="card">
+              <div className="card-titulo">
+                <h2>Ficha</h2>
+                {arteSelecionada && <span className="meta">{ARTE_LABEL[arteSelecionada.arte]}</span>}
+              </div>
+              {avatarSelecionado ? (
+                <div className="ficha">
+                  {arteSelecionada ? (
+                    <img
+                      className="pixel ficha-retrato"
+                      src={`${BASE_AVATARES}/${arteSelecionada.retrato}`}
+                      alt={`Retrato de ${avatarSelecionado.nome}`}
+                      width={96}
+                      height={96}
+                    />
+                  ) : (
+                    <div className="ficha-retrato" />
+                  )}
+                  <dl>
+                    <dt>Agente</dt>
+                    <dd className="ficha-nome">{avatarSelecionado.nome}</dd>
+                    {avatarSelecionado.homenagem && (
+                      <>
+                        <dt>Homenagem</dt>
+                        <dd>{avatarSelecionado.homenagem}</dd>
+                      </>
+                    )}
+                    <dt>Papel</dt>
+                    <dd>{avatarSelecionado.especialidade}</dd>
+                    <dt>Estado</dt>
+                    <dd>
+                      <span className={`badge st-${avatarSelecionado.estado}`}>
+                        {ESTADO_LABEL[avatarSelecionado.estado] ?? avatarSelecionado.estado}
+                      </span>
+                    </dd>
+                  </dl>
+                  {avatarSelecionado.direcao_arte && (
+                    <details className="ficha-arte">
+                      <summary>Direção de arte e referência</summary>
+                      <p>{avatarSelecionado.direcao_arte}</p>
+                      <p className="vazio">{avatarSelecionado.referencia_visual}</p>
+                    </details>
+                  )}
+                </div>
+              ) : (
+                <p className="vazio">Clique em um avatar na sala ou na equipe para ver a ficha.</p>
+              )}
+            </section>
+
+            <section className="card">
+              <div className="card-titulo">
+                <h2>Decisões</h2>
+                <span className="meta">{decisoes.length}</span>
+              </div>
+              {decisoes.length === 0 ? (
+                <p className="vazio">Nenhuma decisão registrada neste projeto.</p>
+              ) : (
+                <div className="decisoes">
+                  {decisoes.map((d) => (
+                    <div key={d.id} className="decisao">
+                      <p>{d.texto}</p>
+                      <div className="acoes">
+                        <span className={`badge st-${d.situacao}`}>
+                          {SITUACAO_DECISAO[d.situacao] ?? d.situacao}
+                        </span>
+                        {d.situacao === "proposta" && (
+                          <button className="btn btn-sm" onClick={() => aprovarDecisao(d.id)}>
+                            Aprovar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+
+        {projetoId !== null && conversaId !== null && sala ? (
+          <ChatNeto
+            key={conversaId}
+            conversaId={conversaId}
+            agentesDoProjeto={sala.avatares.map((a) => ({ agente_id: a.agente_id, nome: a.nome }))}
+            aoAtualizarSala={() => carregarSala(projetoId)}
           />
+        ) : (
+          <section className="card chat" />
         )}
-
-        <aside style={{ minWidth: 220 }}>
-          <h2>Ficha</h2>
-          {avatarSelecionado ? (
-            <div>
-              <p>
-                <strong>{avatarSelecionado.nome}</strong>
-              </p>
-              {avatarSelecionado.homenagem && <p>Homenagem: {avatarSelecionado.homenagem}</p>}
-              <p>{avatarSelecionado.especialidade}</p>
-              <p>Estado: {avatarSelecionado.estado}</p>
-            </div>
-          ) : (
-            <p>Selecione um avatar na sala.</p>
-          )}
-
-          <h2>Decisões</h2>
-          {decisoes.length === 0 && <p>Nenhuma decisão ainda.</p>}
-          {decisoes.map((d) => (
-            <div key={d.id} style={{ marginBottom: "0.5rem" }}>
-              <p style={{ whiteSpace: "pre-wrap" }}>{d.texto}</p>
-              <p>Situação: {d.situacao}</p>
-              {d.situacao === "proposta" && <button onClick={() => aprovarDecisao(d.id)}>Aprovar</button>}
-            </div>
-          ))}
-        </aside>
       </div>
-
-      {projetoId !== null && conversaId !== null && sala && (
-        <ChatNeto
-          projetoId={projetoId}
-          conversaId={conversaId}
-          agentesDoProjeto={sala.avatares.map((a) => ({ agente_id: a.agente_id, nome: a.nome }))}
-          aoAtualizarSala={() => carregarSala(projetoId)}
-        />
-      )}
-    </main>
+    </>
   );
 }
 

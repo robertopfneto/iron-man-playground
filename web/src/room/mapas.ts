@@ -1,48 +1,41 @@
 /**
- * Manifesto de templates de mapa (Entrega 4B). Dados separados do código da
- * cena Phaser, como pede o plano. No MVP, um template local é suficiente;
- * V1/V2 (loja de mapas, criação de espaços) ficam para depois do piloto.
+ * Carregador de templates de mapa (Entrega 4B). Os dados do mapa (Tiled JSON,
+ * tileset, pontos e áreas) vivem em public/jogo/mapas, separados da cena Phaser.
+ * Gerados por web/tools/gerar_assets.py.
  */
 
-export type PontoMapa = { x: number; y: number };
+export const BASE_MAPAS = "/jogo/mapas";
 
 export type TemplateMapa = {
   id: string;
   versao: string;
   nome: string;
+  arquivo_mapa: string;
+  tileset: string;
+  nome_tileset: string;
+  previa?: string;
   licenca: string;
-  largura: number;
-  altura: number;
-  pontoEntrada: PontoMapa;
-  pontoMesaReuniao: PontoMapa;
-  pontosTrabalho: PontoMapa[];
 };
 
-export const TEMPLATE_PADRAO_ID = "recepcao_padrao";
+type ManifestoMapas = { padrao: string; templates: TemplateMapa[] };
 
-const TEMPLATES: Record<string, TemplateMapa> = {
-  [TEMPLATE_PADRAO_ID]: {
-    id: TEMPLATE_PADRAO_ID,
-    versao: "1.0.0",
-    nome: "Recepção padrão",
-    licenca: "Elementos próprios simples (placeholder geométrico, sem asset de terceiros).",
-    largura: 800,
-    altura: 480,
-    pontoEntrada: { x: 80, y: 420 },
-    pontoMesaReuniao: { x: 400, y: 160 },
-    pontosTrabalho: [
-      { x: 620, y: 120 },
-      { x: 680, y: 220 },
-      { x: 620, y: 320 },
-      { x: 520, y: 380 },
-      { x: 180, y: 260 },
-    ],
-  },
-};
+let cache: Promise<ManifestoMapas> | null = null;
 
-export function resolverTemplate(templateId?: string | null): TemplateMapa {
-  if (templateId && TEMPLATES[templateId]) {
-    return TEMPLATES[templateId];
+function carregarManifesto(): Promise<ManifestoMapas> {
+  if (!cache) {
+    cache = fetch(`${BASE_MAPAS}/manifesto.json`).then((r) => {
+      if (!r.ok) throw new Error("Manifesto de mapas indisponível");
+      return r.json();
+    });
   }
-  return TEMPLATES[TEMPLATE_PADRAO_ID];
+  return cache;
+}
+
+/** Resolve o template pelo id; id ausente ou desconhecido cai no template padrão. */
+export async function resolverTemplate(templateId?: string | null): Promise<TemplateMapa> {
+  const manifesto = await carregarManifesto();
+  const pedido = manifesto.templates.find((t) => t.id === templateId);
+  const padrao = manifesto.templates.find((t) => t.id === manifesto.padrao);
+  if (!padrao) throw new Error("Template padrão ausente do manifesto");
+  return pedido ?? padrao;
 }

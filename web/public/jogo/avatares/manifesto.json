@@ -1,0 +1,214 @@
+{
+  "versao": "0.1.0",
+  "quadro": {
+    "largura": 32,
+    "altura": 48,
+    "apoio": {
+      "x": 16,
+      "y": 45
+    }
+  },
+  "retrato": {
+    "largura": 96,
+    "altura": 96
+  },
+  "atlas": {
+    "imagem": "atlas.png",
+    "dados": "atlas.json"
+  },
+  "licenca": "Arte própria do projeto Escritório 2D, gerada por web/tools/gerar_assets.py. Sem assets de terceiros.",
+  "padrao": {
+    "quadros": {
+      "baixo": "placeholder_generico"
+    }
+  },
+  "avatares": [
+    {
+      "avatar_id": "neto",
+      "nome": "Neto",
+      "arte": "em_revisao",
+      "retrato": "retratos/neto.png",
+      "simbolo": "simbolos/neto.png",
+      "quadros": {
+        "baixo": "neto_baixo"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "pistori",
+      "nome": "Pistori",
+      "arte": "em_revisao",
+      "retrato": "retratos/pistori.png",
+      "simbolo": "simbolos/pistori.png",
+      "quadros": {
+        "baixo": "pistori_baixo"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "kernighan",
+      "nome": "Kernighan",
+      "arte": "placeholder",
+      "retrato": "retratos/kernighan.png",
+      "simbolo": "simbolos/kernighan.png",
+      "quadros": {
+        "baixo": "placeholder_kernighan"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "lecun",
+      "nome": "LeCun",
+      "arte": "placeholder",
+      "retrato": "retratos/lecun.png",
+      "simbolo": "simbolos/lecun.png",
+      "quadros": {
+        "baixo": "placeholder_lecun"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "hopper",
+      "nome": "Hopper",
+      "arte": "placeholder",
+      "retrato": "retratos/hopper.png",
+      "simbolo": "simbolos/hopper.png",
+      "quadros": {
+        "baixo": "placeholder_hopper"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "liskov",
+      "nome": "Liskov",
+      "arte": "placeholder",
+      "retrato": "retratos/liskov.png",
+      "simbolo": "simbolos/liskov.png",
+      "quadros": {
+        "baixo": "placeholder_liskov"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "lamport",
+      "nome": "Lamport",
+      "arte": "placeholder",
+      "retrato": "retratos/lamport.png",
+      "simbolo": "simbolos/lamport.png",
+      "quadros": {
+        "baixo": "placeholder_lamport"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "salton",
+      "nome": "Salton",
+      "arte": "placeholder",
+      "retrato": "retratos/salton.png",
+      "simbolo": "simbolos/salton.png",
+      "quadros": {
+        "baixo": "placeholder_salton"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "luhn",
+      "nome": "Luhn",
+      "arte": "placeholder",
+      "retrato": "retratos/luhn.png",
+      "simbolo": "simbolos/luhn.png",
+      "quadros": {
+        "baixo": "placeholder_luhn"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "hamming",
+      "nome": "Hamming",
+      "arte": "placeholder",
+      "retrato": "retratos/hamming.png",
+      "simbolo": "simbolos/hamming.png",
+      "quadros": {
+        "baixo": "placeholder_hamming"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "knuth",
+      "nome": "Knuth",
+      "arte": "placeholder",
+      "retrato": "retratos/knuth.png",
+      "simbolo": "simbolos/knuth.png",
+      "quadros": {
+        "baixo": "placeholder_knuth"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "kohavi",
+      "nome": "Kohavi",
+      "arte": "placeholder",
+      "retrato": "retratos/kohavi.png",
+      "simbolo": "simbolos/kohavi.png",
+      "quadros": {
+        "baixo": "placeholder_kohavi"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "fei-fei",
+      "nome": "Fei-Fei",
+      "arte": "placeholder",
+      "retrato": "retratos/fei-fei.png",
+      "simbolo": "simbolos/fei-fei.png",
+      "quadros": {
+        "baixo": "placeholder_fei-fei"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "torralba",
+      "nome": "Torralba",
+      "arte": "placeholder",
+      "retrato": "retratos/torralba.png",
+      "simbolo": "simbolos/torralba.png",
+      "quadros": {
+        "baixo": "placeholder_torralba"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "torvalds",
+      "nome": "Torvalds",
+      "arte": "placeholder",
+      "retrato": "retratos/torvalds.png",
+      "simbolo": "simbolos/torvalds.png",
+      "quadros": {
+        "baixo": "placeholder_torvalds"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "hamilton",
+      "nome": "Hamilton",
+      "arte": "placeholder",
+      "retrato": "retratos/hamilton.png",
+      "simbolo": "simbolos/hamilton.png",
+      "quadros": {
+        "baixo": "placeholder_hamilton"
+      },
+      "animacoes": []
+    },
+    {
+      "avatar_id": "papert",
+      "nome": "Papert",
+      "arte": "placeholder",
+      "retrato": "retratos/papert.png",
+      "simbolo": "simbolos/papert.png",
+      "quadros": {
+        "baixo": "placeholder_papert"
+      },
+      "animacoes": []
+    }
+  ]
+}

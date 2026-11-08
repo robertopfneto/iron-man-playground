@@ -4,15 +4,22 @@ Protótipo de escritório virtual 2D para conduzir sessões com Neto (coordenado
 
 ## Fluxo completo (Entrega 4)
 
-1. Suba a aplicação (seção abaixo) e crie o primeiro usuário.
-2. Abra `http://127.0.0.1:8000`, faça login (link para o Django Admin aparece na tela se a sessão não estiver ativa) e escolha um projeto.
-3. A sala mostra os agentes autorizados nesse projeto. Clique em um avatar para abrir a ficha.
+1. Suba a aplicação (seção abaixo).
+2. Abra `http://127.0.0.1:8000`. No primeiro uso a tela pede para **criar a conta administradora**. Depois disso o cadastro fecha e a mesma tela vira o login. Escolha um projeto no topo.
+3. A sala mostra os agentes autorizados nesse projeto, cada um no ponto que o mapa define. Clique em um avatar, ou no nome dele na lista da equipe, para abrir a ficha.
 4. No chat com Neto, descreva um pedido. Pedidos simples encerram sem convocação; pedidos de mudança de código propõem uma convocação com agentes sugeridos (ex.: Hamilton + Kernighan).
 5. Confirme a convocação com os agentes desejados. Os cartões de turno aparecem; cole o resultado de cada especialista para fechar o turno — o avatar correspondente muda de estado na sala em tempo real.
 6. Quando todos os turnos de uma convocação são concluídos, uma decisão é consolidada como proposta. Aprove-a na lateral da tela.
 7. Recarregue a página: o estado dos avatares, da convocação e da decisão aprovada persiste. Em uma nova conversa, pergunte sobre o mesmo assunto — Neto recupera a decisão aprovada diretamente, sem nova convocação.
 
-A arte dos avatares (Entrega 4A) usa placeholders geométricos gerados por código — sprites/retratos pixel art definitivos ficam para uma etapa com ferramenta de geração de imagem. O mapa da sala (Entrega 4B) usa um template local fixo (`recepcao_padrao`); a loja de mapas e a criação de espaços (V1/V2) ficam para depois do piloto.
+### Sala e arte (Entregas 4A e 4B)
+
+- **Mapa**: Tiled ortogonal com tiles 16×16 próprios (`web/public/jogo/mapas/recepcao_padrao/`), com as camadas `piso`, `obstaculos` e `objetos`. A camada de objetos traz as áreas nomeadas e os pontos `entrada`, `mesa_reuniao`, `assento_reuniao_N` e `trabalho_N`. O manifesto `web/public/jogo/mapas/manifesto.json` registra id, versão, mapa, tileset, prévia e licença. A cena Phaser carrega o template pelo `template_id`. Um id ausente ou desconhecido cai no padrão.
+- **Posicionamento**: Neto fica na mesa de reunião. Agentes com turno convocado, em andamento ou aguardando revisão vão para os assentos da reunião. Os demais ficam nos postos de trabalho. Mudar os pontos no `mapa.json` muda o posicionamento sem mexer no código da cena.
+- **Avatares**: pixel art com sprites 32×48 (apoio nos pés) e retratos 96×96. Neto e Pistori têm sprite frontal e retrato propostos, **aguardando revisão visual** (prancha em `docs/arte/revisao_neto_pistori.png`). Os outros 15 agentes usam placeholder com nome e símbolo individual. Créditos, condições de uso e referências estão em [`docs/arte/creditos.md`](docs/arte/creditos.md).
+- Para regenerar a arte: `python3 web/tools/gerar_assets.py` (só biblioteca padrão). Depois, `docker compose up --build -d --wait`.
+
+A loja de mapas e a criação de espaços (V1/V2) ficam para depois do piloto.
 
 ## Pré-requisitos
 
@@ -24,11 +31,10 @@ Git, Docker Engine e Docker Compose instalados no notebook. O primeiro build bai
 git clone URL_DO_REPOSITORIO escritorio-2d
 cd escritorio-2d
 docker compose up --build -d --wait
-docker compose exec api python manage.py createsuperuser
 curl -fsS http://127.0.0.1:8000/api/health
 ```
 
-Abra `http://127.0.0.1:8000` no navegador. Não há usuário de demonstração com credenciais fixas — crie o primeiro usuário com `createsuperuser` no primeiro uso.
+Abra `http://127.0.0.1:8000` no navegador e crie a conta administradora na tela de primeiro acesso. Não há usuário de demonstração com credencial fixa. Depois da primeira conta, o endpoint de cadastro fica fechado. Novas contas são criadas no Django Admin (`/admin/`) ou com `docker compose exec api python manage.py createsuperuser`.
 
 Para parar a aplicação:
 

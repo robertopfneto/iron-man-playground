@@ -11,6 +11,89 @@ class HealthTests(TestCase):
         self.assertEqual(resp.json(), {"status": "ok"})
 
 
+class AuthSpaTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_user(username="spa", password="senha-teste-123")
+
+    def test_sessao_anonima_define_cookie_csrf(self):
+        client = Client()
+        resp = client.get("/api/auth/sessao")
+        self.assertEqual(
+            resp.json(), {"autenticado": False, "usuario": None, "precisa_cadastro": False}
+        )
+        self.assertIn("csrftoken", resp.cookies)
+
+    def test_primeiro_acesso_fechado_quando_ja_existe_usuario(self):
+        resp = Client().post(
+            "/api/auth/primeiro-acesso",
+            data={"usuario": "intruso", "senha": "Outra-senha-forte-1"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(get_user_model().objects.filter(username="intruso").exists())
+
+
+class PrimeiroAcessoTests(TestCase):
+    def test_primeiro_acesso_cria_admin_e_fecha_cadastro(self):
+        client = Client()
+        self.assertTrue(client.get("/api/auth/sessao").json()["precisa_cadastro"])
+
+        fraca = client.post(
+            "/api/auth/primeiro-acesso",
+            data={"usuario": "roberto", "senha": "123"},
+            content_type="application/json",
+        )
+        self.assertEqual(fraca.status_code, 400)
+
+        ok = client.post(
+            "/api/auth/primeiro-acesso",
+            data={"usuario": "roberto", "senha": "Senha-forte-escritorio-1"},
+            content_type="application/json",
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertTrue(get_user_model().objects.get(username="roberto").is_superuser)
+        self.assertEqual(client.get("/api/projetos").status_code, 200)
+
+        segunda = Client().post(
+            "/api/auth/primeiro-acesso",
+            data={"usuario": "outro", "senha": "Senha-forte-escritorio-2"},
+            content_type="application/json",
+        )
+        self.assertEqual(segunda.status_code, 403)
+
+
+class LoginSpaTests(TestCase):
+    def setUp(self):
+        get_user_model().objects.create_user(username="spa", password="senha-teste-123")
+
+    def test_login_com_csrf_e_logout(self):
+        client = Client(enforce_csrf_checks=True)
+        client.get("/api/auth/sessao")
+        token = client.cookies["csrftoken"].value
+
+        ruim = client.post(
+            "/api/auth/login",
+            data={"usuario": "spa", "senha": "errada"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(ruim.status_code, 401)
+
+        ok = client.post(
+            "/api/auth/login",
+            data={"usuario": "spa", "senha": "senha-teste-123"},
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(client.get("/api/projetos").status_code, 200)
+
+        token = client.cookies["csrftoken"].value
+        saiu = client.post("/api/auth/logout", HTTP_X_CSRFTOKEN=token)
+        self.assertEqual(saiu.status_code, 200)
+        self.assertIn(client.get("/api/projetos").status_code, (401, 403))
+
+
 class ProjetosAcessoTests(TestCase):
     def setUp(self):
         self.projeto = Projeto.objects.create(nome="Projeto de teste")
@@ -36,6 +119,10 @@ class SeedDemoTests(TestCase):
         call_command("seed_demo")
         call_command("seed_demo")
         self.assertEqual(Projeto.objects.filter(nome="Projeto pessoal demonstrativo").count(), 1)
+
+        Agente.objects.filter(nome="Pistori").update(homenagem="")
+        call_command("seed_demo")
+        self.assertEqual(Agente.objects.get(nome="Pistori").homenagem, "Hemerson Pistori")
 
         real = Projeto.objects.create(nome="Projeto real", demo=False)
         call_command("clear_demo")
@@ -213,6 +300,18 @@ class ChatDelegacaoTests(TestCase):
         self.assertEqual(resp_aprova.status_code, 200)
         decisao.refresh_from_db()
         self.assertEqual(decisao.situacao, Decisao.SITUACAO_APROVADA)
+
+    def test_pedido_geral_nao_sugere_convocar_neto(self):
+        conversa_id = self._nova_conversa()
+        resp = self.client_logado.post(
+            f"/api/conversas/{conversa_id}/mensagens",
+            data={"conteudo": "Quero comparar duas abordagens de avaliação e saber se a diferença entre elas é real."},
+            content_type="application/json",
+        ).json()
+        self.assertEqual(resp["tipo"], "proposta_convocacao")
+        neto = Agente.objects.get(nome="Neto")
+        self.assertNotIn(neto.id, resp["agentes_sugeridos"])
+        self.assertIn(Agente.objects.get(nome="Hamilton").id, resp["agentes_sugeridos"])
 
     def test_confirmacao_repetida_nao_duplica_turnos(self):
         from core.models import Agente

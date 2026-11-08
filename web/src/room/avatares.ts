@@ -1,23 +1,54 @@
 /**
- * Placeholders visuais da Entrega 4A. Sem ferramenta de geração de imagem
- * disponível nesta etapa, cada avatar usa uma forma simples (círculo colorido
- * + símbolo = primeira letra do nome) até a arte definitiva (retrato/sprite
- * pixel art) ser produzida em outra ferramenta e substituir este placeholder.
- * Nome, homenagem e especialidade continuam vindo do backend (core.models.Agente).
+ * Manifesto de avatares (Entrega 4A): atlas de sprites 32x48, retratos 96x96 e
+ * símbolos individuais, gerados por web/tools/gerar_assets.py. O vínculo é feito
+ * pelo avatar_id estável de cada agente.
  */
 
-export function corParaAvatar(avatarId: string): number {
-  let hash = 0;
-  for (let i = 0; i < avatarId.length; i++) {
-    hash = (hash * 31 + avatarId.charCodeAt(i)) & 0xffffff;
+export const BASE_AVATARES = "/jogo/avatares";
+
+export type AvatarManifesto = {
+  avatar_id: string;
+  nome: string;
+  arte: "em_revisao" | "definitiva" | "placeholder";
+  retrato: string;
+  simbolo: string;
+  quadros: Partial<Record<Direcao, string>>;
+  animacoes: string[];
+};
+
+export type Direcao = "baixo" | "cima" | "esquerda" | "direita";
+
+export type ManifestoAvatares = {
+  versao: string;
+  quadro: { largura: number; altura: number; apoio: { x: number; y: number } };
+  retrato: { largura: number; altura: number };
+  atlas: { imagem: string; dados: string };
+  licenca: string;
+  padrao: { quadros: Partial<Record<Direcao, string>> };
+  avatares: AvatarManifesto[];
+};
+
+let cache: Promise<ManifestoAvatares> | null = null;
+
+export function carregarManifestoAvatares(): Promise<ManifestoAvatares> {
+  if (!cache) {
+    cache = fetch(`${BASE_AVATARES}/manifesto.json`).then((r) => {
+      if (!r.ok) throw new Error("Manifesto de avatares indisponível");
+      return r.json();
+    });
   }
-  // Garante saturação/luminosidade decentes convertendo para uma paleta fixa.
-  const paleta = [0x2a6f97, 0x7a2e8f, 0x1b7a4a, 0x8f5a2e, 0x2e4a8f, 0x8f2e4a, 0x4a8f2e];
-  return paleta[hash % paleta.length];
+  return cache;
 }
 
-export function simboloParaAvatar(nome: string): string {
-  return nome.trim().charAt(0).toUpperCase();
+export function buscarAvatar(manifesto: ManifestoAvatares | null, avatarId: string) {
+  return manifesto?.avatares.find((a) => a.avatar_id === avatarId) ?? null;
+}
+
+/** Quadro para a direção pedida; enquanto só existe a pose frontal, usa "baixo". */
+export function quadroDoAvatar(manifesto: ManifestoAvatares, avatarId: string, direcao: Direcao): string {
+  const avatar = buscarAvatar(manifesto, avatarId);
+  const quadros = avatar?.quadros ?? manifesto.padrao.quadros;
+  return quadros[direcao] ?? quadros.baixo ?? (manifesto.padrao.quadros.baixo as string);
 }
 
 export const ESTADO_LABEL: Record<string, string> = {
@@ -26,4 +57,18 @@ export const ESTADO_LABEL: Record<string, string> = {
   em_andamento: "Em andamento",
   aguardando_revisao: "Aguardando revisão",
   concluido: "Concluído",
+};
+
+export const ESTADO_COR: Record<string, number> = {
+  disponivel: 0x7d8ea3,
+  convocado: 0xf2b84b,
+  em_andamento: 0x5b9df5,
+  aguardando_revisao: 0xb384f2,
+  concluido: 0x46c28e,
+};
+
+export const ARTE_LABEL: Record<AvatarManifesto["arte"], string> = {
+  em_revisao: "Arte proposta, aguardando revisão",
+  definitiva: "Arte definitiva",
+  placeholder: "Placeholder até a arte ser produzida",
 };

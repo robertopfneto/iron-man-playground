@@ -132,6 +132,12 @@ class Command(BaseCommand):
         agentes = {}
         for nome, dados in AGENTES.items():
             agente, _ = Agente.objects.get_or_create(nome=nome, defaults={**dados, "demo": True})
+            # Agentes demo criados antes dos campos de arte recebem só o que estiver vazio.
+            faltantes = {campo: valor for campo, valor in dados.items() if not getattr(agente, campo)}
+            if agente.demo and faltantes:
+                for campo, valor in faltantes.items():
+                    setattr(agente, campo, valor)
+                agente.save(update_fields=list(faltantes))
             agentes[nome] = agente
             ConfiguracaoModelo.objects.get_or_create(
                 agente=agente, defaults={"modo": ConfiguracaoModelo.MODO_MANUAL, "habilitado": True}

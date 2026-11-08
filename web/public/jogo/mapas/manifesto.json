@@ -1,0 +1,15 @@
+{
+  "padrao": "recepcao_padrao",
+  "templates": [
+    {
+      "id": "recepcao_padrao",
+      "versao": "1.0.0",
+      "nome": "Recepção, reunião e trabalho",
+      "arquivo_mapa": "recepcao_padrao/mapa.json",
+      "tileset": "recepcao_padrao/tileset.png",
+      "nome_tileset": "escritorio",
+      "previa": "recepcao_padrao/previa.png",
+      "licenca": "Arte própria do projeto Escritório 2D, gerada por web/tools/gerar_assets.py. Sem assets de terceiros."
+    }
+  ]
+}
