@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
-import { ESTADO_LABEL } from "./room/avatares";
+
+export const ID_CAMPO_NETO = "mensagem-neto";
 
 type AgenteProjeto = { agente_id: number; nome: string };
 
@@ -28,9 +29,6 @@ type RespostaMensagem =
     }
   | { tipo: "limite_atingido" };
 
-type Turno = { id: number; agente_id: number; agente: string; situacao: string; resultado: string; autoria: string };
-type Convocacao = { id: number; situacao: string; tarefa: string; turnos: Turno[] };
-
 type Item =
   | { tipo: "usuario"; texto: string }
   | { tipo: "neto"; texto: string }
@@ -43,18 +41,21 @@ type Props = {
   aoAtualizarSala: () => void;
 };
 
+/** Conversa com Neto. Os turnos convocados ficam no painel de Atividades, que persiste entre recargas. */
 export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Props) {
   const [pedido, setPedido] = useState("");
   const [historico, setHistorico] = useState<Item[]>([]);
-  const [convocacao, setConvocacao] = useState<Convocacao | null>(null);
+  const [convocacaoId, setConvocacaoId] = useState<number | null>(null);
   const [agentesEscolhidos, setAgentesEscolhidos] = useState<Set<number>>(new Set());
-  const [rascunhoResultado, setRascunhoResultado] = useState<Record<number, string>>({});
   const [enviando, setEnviando] = useState(false);
   const [copiado, setCopiado] = useState(false);
-  const fimRef = useRef<HTMLDivElement>(null);
+  const mensagensRef = useRef<HTMLDivElement>(null);
+  const especialistas = agentesDoProjeto.filter((a) => a.nome !== "Neto");
 
   useEffect(() => {
-    fimRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // Rola só a lista de mensagens; scrollIntoView rolaria a página inteira quando o chat fica abaixo da sala.
+    const lista = mensagensRef.current;
+    if (lista && historico.length > 0) lista.scrollTop = lista.scrollHeight;
   }, [historico]);
 
   async function enviarMensagem(e: FormEvent) {
@@ -71,7 +72,7 @@ export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Prop
         body: JSON.stringify({ conteudo: texto }),
       });
 
-      if (resp.tipo === "duvida_simples" || resp.tipo === "resposta_direta") {
+      if (resp.tipo === "duvida_simples" || resp.tipo === "resposta_direta" || resp.tipo === "sem_evidencia") {
         setHistorico((h) => [...h, { tipo: "neto", texto: resp.resposta }]);
         return;
       }
@@ -82,10 +83,6 @@ export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Prop
           { tipo: "neto", texto: corpo },
           { tipo: "evidencias", lista: resp.evidencias, avisos: resp.avisos },
         ]);
-        return;
-      }
-      if (resp.tipo === "sem_evidencia") {
-        setHistorico((h) => [...h, { tipo: "neto", texto: resp.resposta }]);
         return;
       }
       if (resp.tipo === "limite_atingido") {
@@ -102,7 +99,7 @@ export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Prop
         { tipo: "prompt", texto: resp.prompt_copiavel },
       ]);
       setAgentesEscolhidos(new Set(resp.agentes_sugeridos));
-      setConvocacao(await api<Convocacao>(`/convocacoes/${resp.convocacao_id}`));
+      setConvocacaoId(resp.convocacao_id);
     } catch (falha) {
       setHistorico((h) => [...h, { tipo: "neto", texto: `Não consegui processar: ${(falha as Error).message}` }]);
     } finally {
@@ -126,45 +123,30 @@ export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Prop
   }
 
   async function confirmarConvocacao() {
-    if (!convocacao || agentesEscolhidos.size === 0) return;
-    const resp = await api<{ id: number }>(`/convocacoes/${convocacao.id}/confirmar`, {
+    if (convocacaoId === null || agentesEscolhidos.size === 0) return;
+    await api(`/convocacoes/${convocacaoId}/confirmar`, {
       method: "POST",
       body: JSON.stringify({ agentes_ids: Array.from(agentesEscolhidos) }),
     });
-    setConvocacao(await api<Convocacao>(`/convocacoes/${resp.id}`));
-    aoAtualizarSala();
-  }
-
-  async function registrarResultado(turnoId: number) {
-    const resultado = rascunhoResultado[turnoId] || "";
-    if (!resultado.trim() || !convocacao) return;
-    await api(`/turnos/${turnoId}/resultado`, {
-      method: "POST",
-      body: JSON.stringify({ resultado, autoria: "usuario" }),
-    });
-    const detalhe = await api<Convocacao>(`/convocacoes/${convocacao.id}`);
-    setConvocacao(detalhe);
-    if (detalhe.situacao === "concluida") {
-      setHistorico((h) => [
-        ...h,
-        { tipo: "neto", texto: "Todos os turnos foram fechados. A decisão está proposta na lateral para sua aprovação." },
-      ]);
-    }
+    const nomes = especialistas.filter((a) => agentesEscolhidos.has(a.agente_id)).map((a) => a.nome);
+    setConvocacaoId(null);
+    setHistorico((h) => [
+      ...h,
+      {
+        tipo: "neto",
+        texto: `Convoquei ${nomes.join(" e ")}. Os cartões estão em Atividades: cole ali a entrega de cada especialista.`,
+      },
+    ]);
     aoAtualizarSala();
   }
 
   return (
-    <section className="card chat" aria-label="Chat com Neto">
-      <div className="card-titulo">
-        <h2>Neto · coordenação</h2>
-        <span className="meta">modo manual</span>
-      </div>
-
-      <div className="chat-mensagens">
+    <>
+      <div className="chat-mensagens" aria-live="polite" ref={mensagensRef}>
         {historico.length === 0 && (
           <p className="vazio">
-            Fale com Neto sobre este projeto. Perguntas simples são respondidas direto; pedidos de mudança viram uma
-            convocação de especialistas.
+            Fale com Neto sobre este projeto. Perguntas sobre a documentação vêm com as fontes; pedidos de mudança viram
+            uma convocação de especialistas.
           </p>
         )}
         {historico.map((item, i) =>
@@ -211,26 +193,23 @@ export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Prop
             </div>
           )
         )}
-        <div ref={fimRef} />
       </div>
 
-      {convocacao && convocacao.situacao === "proposta" && (
+      {convocacaoId !== null && (
         <div className="painel">
           <h3>Convocar especialistas</h3>
           <div className="chips">
-            {agentesDoProjeto
-              .filter((a) => a.nome !== "Neto")
-              .map((a) => (
-                <button
-                  key={a.agente_id}
-                  type="button"
-                  className="chip"
-                  aria-pressed={agentesEscolhidos.has(a.agente_id)}
-                  onClick={() => alternarAgente(a.agente_id)}
-                >
-                  {a.nome}
-                </button>
-              ))}
+            {especialistas.map((a) => (
+              <button
+                key={a.agente_id}
+                type="button"
+                className="chip"
+                aria-pressed={agentesEscolhidos.has(a.agente_id)}
+                onClick={() => alternarAgente(a.agente_id)}
+              >
+                {a.nome}
+              </button>
+            ))}
           </div>
           <button className="btn" onClick={confirmarConvocacao} disabled={agentesEscolhidos.size === 0}>
             Confirmar convocação
@@ -238,52 +217,20 @@ export function ChatNeto({ conversaId, agentesDoProjeto, aoAtualizarSala }: Prop
         </div>
       )}
 
-      {convocacao && convocacao.situacao !== "proposta" && (
-        <div className="painel">
-          <h3>Convocação #{convocacao.id}</h3>
-          {convocacao.turnos.map((t) => (
-            <div key={t.id} className="turno">
-              <div className="turno-topo">
-                {t.agente}
-                <span className={`badge st-${t.situacao}`}>{ESTADO_LABEL[t.situacao] ?? t.situacao}</span>
-              </div>
-              {t.situacao !== "concluido" ? (
-                <>
-                  <textarea
-                    className="field"
-                    aria-label={`Resultado de ${t.agente}`}
-                    placeholder="Cole aqui a entrega deste especialista..."
-                    value={rascunhoResultado[t.id] || ""}
-                    onChange={(e) => setRascunhoResultado((r) => ({ ...r, [t.id]: e.target.value }))}
-                  />
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => registrarResultado(t.id)}
-                    disabled={!(rascunhoResultado[t.id] || "").trim()}
-                  >
-                    Fechar turno
-                  </button>
-                </>
-              ) : (
-                <p>{t.resultado}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
       <form className="chat-entrada" onSubmit={enviarMensagem}>
         <input
+          id={ID_CAMPO_NETO}
           className="field"
           aria-label="Mensagem para Neto"
           value={pedido}
           onChange={(e) => setPedido(e.target.value)}
           placeholder="Escreva para Neto..."
+          autoComplete="off"
         />
         <button className="btn" type="submit" disabled={enviando || !pedido.trim()}>
           Enviar
         </button>
       </form>
-    </section>
+    </>
   );
 }

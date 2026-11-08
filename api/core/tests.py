@@ -338,6 +338,34 @@ class ChatDelegacaoTests(TestCase):
         self.assertEqual(primeira.json()["turnos"], segunda.json()["turnos"])
         self.assertEqual(Turno.objects.filter(convocacao_id=convocacao_id).count(), 1)
 
+    def test_convocacoes_abertas_sobrevivem_a_nova_conversa(self):
+        conversa_id = self._nova_conversa()
+        proposta = self.client_logado.post(
+            f"/api/conversas/{conversa_id}/mensagens",
+            data={"conteudo": "Preciso alterar o comando de instalação deste projeto."},
+            content_type="application/json",
+        ).json()
+        hamilton = Agente.objects.get(nome="Hamilton")
+        self.client_logado.post(
+            f"/api/convocacoes/{proposta['convocacao_id']}/confirmar",
+            data={"agentes_ids": [hamilton.id]},
+            content_type="application/json",
+        )
+        self._nova_conversa()  # recarregar a página abre outra conversa
+
+        abertas = self.client_logado.get(f"/api/projetos/{self.projeto.id}/convocacoes-abertas").json()
+        self.assertEqual([c["id"] for c in abertas], [proposta["convocacao_id"]])
+        self.assertEqual(abertas[0]["turnos"][0]["agente"], "Hamilton")
+        self.assertEqual(abertas[0]["turnos"][0]["situacao"], "convocado")
+
+        turno_id = abertas[0]["turnos"][0]["id"]
+        self.client_logado.post(
+            f"/api/turnos/{turno_id}/resultado",
+            data={"resultado": "Feito.", "autoria": "usuario3"},
+            content_type="application/json",
+        )
+        self.assertEqual(self.client_logado.get(f"/api/projetos/{self.projeto.id}/convocacoes-abertas").json(), [])
+
     def test_decisao_aprovada_e_recuperada_em_outra_conversa_no_mesmo_projeto(self):
         Decisao.objects.create(
             projeto=self.projeto,

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import {
   BASE_AVATARES,
   Direcao,
+  COR_SELECAO,
   ESTADO_COR,
   ManifestoAvatares,
   quadroDoAvatar,
@@ -100,14 +101,16 @@ class CenaSala extends Phaser.Scene {
     this.mapa.createLayer("obstaculos", tileset, 0, 0)?.setDepth(1);
 
     const zoom = this.ajustarTamanho();
-    const resolucao = zoom * (window.devicePixelRatio || 1);
+    const resolucao = Math.max(zoom, 1) * (window.devicePixelRatio || 1);
+    // Tamanho em unidades do mapa que vira pelo menos ~10–11 px na tela, em qualquer zoom.
+    const tamanho = (minimo: number, telaPx: number) => `${Math.max(minimo, telaPx / zoom)}px`;
     const objetos = this.mapa.getObjectLayer("objetos")?.objects ?? [];
 
     for (const area of objetos.filter((o) => o.type === "area")) {
       const rotulo = this.add
         .text((area.x ?? 0) + (area.width ?? 0) / 2, (area.y ?? 0) + 3, (area.name ?? "").toUpperCase(), {
-          fontFamily: "Inter, system-ui, sans-serif",
-          fontSize: "6px",
+          fontFamily: "system-ui, sans-serif",
+          fontSize: tamanho(5.5, 10),
           fontStyle: "600",
           color: "#c9d3e0",
           resolution: resolucao,
@@ -134,8 +137,8 @@ class CenaSala extends Phaser.Scene {
         this.tweens.add({ targets: anel, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
       }
       const selecao = this.add
-        .ellipse(ponto.x, ponto.y, 30, 11)
-        .setStrokeStyle(1.2, 0xffffff, 1)
+        .ellipse(ponto.x, ponto.y, 31, 12)
+        .setStrokeStyle(1.6, COR_SELECAO, 1)
         .setDepth(5 + ponto.y)
         .setVisible(avatar.agente_id === this.props.selecionadoId);
       this.aneisSelecao.set(avatar.agente_id, selecao);
@@ -152,8 +155,8 @@ class CenaSala extends Phaser.Scene {
       const topo = ponto.y - apoio.y - 3;
       const nome = this.add
         .text(ponto.x + 3, topo, avatar.nome, {
-          fontFamily: "Inter, system-ui, sans-serif",
-          fontSize: "6.5px",
+          fontFamily: "system-ui, sans-serif",
+          fontSize: tamanho(6.5, 11),
           fontStyle: "600",
           color: "#f3f6fa",
           resolution: resolucao,
@@ -171,9 +174,10 @@ class CenaSala extends Phaser.Scene {
         .setDepth(3001);
     }
 
-    const aoRedimensionar = () => this.ajustarTamanho();
-    window.addEventListener("resize", aoRedimensionar);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener("resize", aoRedimensionar));
+    // Recalcula quando o card muda de largura (layout tardio, painel abrindo, janela redimensionada).
+    const observador = new ResizeObserver(() => this.ajustarTamanho());
+    observador.observe(this.container);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => observador.disconnect());
   }
 
   marcarSelecionado(id: number | null) {
@@ -184,9 +188,11 @@ class CenaSala extends Phaser.Scene {
     const mapaW = this.mapa.widthInPixels;
     const mapaH = this.mapa.heightInPixels;
     const disponivel = Math.max(1, this.container.clientWidth);
-    // Escala inteira mantém os pixels nítidos; abaixo de 1x (telas estreitas) aceita fração.
-    const zoom = disponivel >= mapaW ? Math.floor(disponivel / mapaW) : disponivel / mapaW;
-    this.scale.resize(Math.round(mapaW * zoom), Math.round(mapaH * zoom));
+    // Sempre escala inteira (pixels nítidos). Em tela estreita fica em 1x e o card rola na horizontal.
+    const zoom = Math.max(1, Math.floor(disponivel / mapaW));
+    this.container.classList.toggle("estreita", disponivel < mapaW);
+    if (this.scale.width === mapaW * zoom && this.cameras.main.zoom === zoom) return zoom;
+    this.scale.resize(mapaW * zoom, mapaH * zoom);
     this.cameras.main.setZoom(zoom).centerOn(mapaW / 2, mapaH / 2);
     return zoom;
   }

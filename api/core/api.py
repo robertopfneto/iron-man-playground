@@ -406,6 +406,35 @@ def listar_decisoes(request, projeto_id: int):
     ]
 
 
+@api.get("/projetos/{projeto_id}/convocacoes-abertas", auth=django_auth)
+def listar_convocacoes_abertas(request, projeto_id: int):
+    """Convocações confirmadas com turnos ainda não concluídos: o trabalho pendente do projeto,
+    persistido entre recargas e independente da conversa em que nasceu."""
+    projeto = get_object_or_404(Projeto, pk=projeto_id)
+    abertas = (
+        Convocacao.objects.filter(projeto=projeto, situacao=Convocacao.SITUACAO_CONFIRMADA)
+        .prefetch_related("turnos__agente")
+        .order_by("criado_em")
+    )
+    return [
+        {
+            "id": c.id,
+            "tarefa": c.tarefa,
+            "turnos": [
+                {
+                    "id": t.id,
+                    "agente_id": t.agente_id,
+                    "agente": t.agente.nome,
+                    "situacao": t.situacao,
+                    "resultado": t.resultado,
+                }
+                for t in c.turnos.all()
+            ],
+        }
+        for c in abertas
+    ]
+
+
 # --- Entrega 4: sala 2D ligada ao trabalho real ----------------------------
 
 ESTADO_DISPONIVEL = "disponivel"

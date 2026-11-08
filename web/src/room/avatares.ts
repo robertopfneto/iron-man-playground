@@ -59,13 +59,16 @@ export const ESTADO_LABEL: Record<string, string> = {
   concluido: "Concluído",
 };
 
+// Mesmos valores dos tokens --st-* em styles.css.
 export const ESTADO_COR: Record<string, number> = {
-  disponivel: 0x7d8ea3,
-  convocado: 0xf2b84b,
-  em_andamento: 0x5b9df5,
-  aguardando_revisao: 0xb384f2,
-  concluido: 0x46c28e,
+  disponivel: 0x8c98a9,
+  convocado: 0x5fb0f2,
+  em_andamento: 0x45c8b6,
+  aguardando_revisao: 0xc08cf0,
+  concluido: 0x5ccf8f,
 };
+
+export const COR_SELECAO = 0xf0a83a;
 
 export const ARTE_LABEL: Record<AvatarManifesto["arte"], string> = {
   em_revisao: "Arte proposta, aguardando revisão",
