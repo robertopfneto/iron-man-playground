@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "core",
+    "conhecimento",
 ]
 
 MIDDLEWARE = [
@@ -114,3 +115,11 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
+
+# Base de conhecimento. O token de leitura do GitHub (GITHUB_TOKEN_LEITURA) é lido
+# só do ambiente pelo módulo de Git e nunca vai para o banco ou para logs.
+CONHECIMENTO_DIR_ESPELHOS = os.environ.get("CONHECIMENTO_DIR_ESPELHOS", str(DATA_DIR / "git"))
+CONHECIMENTO_DIR_FONTES_LOCAIS = os.environ.get("CONHECIMENTO_DIR_FONTES_LOCAIS", str(DATA_DIR / "fontes_demo"))
+CONHECIMENTO_EMBEDDER = os.environ.get("CONHECIMENTO_EMBEDDER", "conhecimento.embeddings.OllamaEmbedder")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434")
+EMBEDDINGS_MODELO = os.environ.get("EMBEDDINGS_MODELO", "bge-m3")

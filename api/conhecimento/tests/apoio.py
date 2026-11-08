@@ -1,0 +1,186 @@
+"""Apoio aos testes: repositórios Git fictícios e embedders determinísticos."""
+
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import zlib
+from pathlib import Path
+
+from django.test import TestCase, override_settings
+
+from conhecimento.embeddings import EmbeddingsIndisponiveis
+from conhecimento.models import FonteGit
+from core.models import Projeto, Repositorio
+
+CONCEITOS = {
+    "instalar": 0, "instalação": 0, "instalacao": 0, "install": 0, "setup": 0, "pipx": 0,
+    "preparar": 0, "configurar": 0, "subir": 0,
+    "executar": 1, "execução": 1, "rodar": 1, "run": 1, "uso": 1, "usar": 1, "converter": 1,
+    "teste": 2, "testes": 2, "pytest": 2, "validar": 2,
+    "formato": 3, "saída": 3, "saida": 3, "json": 3, "csv": 3, "relatório": 3,
+    "experimento": 4, "protocolo": 4, "baseline": 4, "comparar": 4,
+    "ambiente": 5, "máquina": 5, "maquina": 5, "dependências": 5,
+    "decisão": 6, "decidimos": 6, "adr": 6,
+}
+
+
+def vetor_falso(texto: str) -> list[float]:
+    v = [0.0] * 16
+    for palavra in re.findall(r"\w+", texto.lower()):
+        if palavra in CONCEITOS:
+            v[CONCEITOS[palavra]] += 1.0
+        else:
+            v[8 + zlib.crc32(palavra.encode()) % 8] += 0.05
+    return v
+
+
+class EmbedderFalso:
+    chamadas: list[int] = []
+
+    def vetorizar(self, textos):
+        EmbedderFalso.chamadas.append(len(textos))
+        return [vetor_falso(t) for t in textos]
+
+
+class EmbedderQuebrado:
+    def vetorizar(self, textos):
+        raise EmbeddingsIndisponiveis("Ollama indisponível (teste).")
+
+
+class RepoTeste:
+    def __init__(self, raiz: Path, nome: str, arquivos: dict[str, str] | None = None):
+        self.dir = raiz / nome
+        self.dir.mkdir(parents=True)
+        self._git("init", "--quiet", "--initial-branch=main")
+        for caminho, texto in (arquivos or {}).items():
+            self.escrever(caminho, texto)
+
+    def _git(self, *args) -> str:
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": str(self.dir.parent),
+            "GIT_AUTHOR_NAME": "Teste",
+            "GIT_AUTHOR_EMAIL": "teste@example.com",
+            "GIT_COMMITTER_NAME": "Teste",
+            "GIT_COMMITTER_EMAIL": "teste@example.com",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+        }
+        resultado = subprocess.run(["git", "-C", str(self.dir), *args], env=env, check=True, capture_output=True)
+        return resultado.stdout.decode().strip()
+
+    def escrever(self, caminho: str, texto: str) -> None:
+        alvo = self.dir / caminho
+        alvo.parent.mkdir(parents=True, exist_ok=True)
+        alvo.write_text(texto, encoding="utf-8")
+
+    def remover(self, caminho: str) -> None:
+        self._git("rm", "-q", caminho)
+
+    def mover(self, de: str, para: str) -> None:
+        (self.dir / para).parent.mkdir(parents=True, exist_ok=True)
+        self._git("mv", de, para)
+
+    def commit(self, mensagem: str = "atualiza docs") -> str:
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", mensagem)
+        return self._git("rev-parse", "HEAD")
+
+    def reescrever_ultimo_commit(self, mensagem: str = "reescrito") -> str:
+        self._git("add", "-A")
+        self._git("commit", "-q", "--amend", "-m", mensagem)
+        return self._git("rev-parse", "HEAD")
+
+
+FERRAMENTA = {
+    "README.md": """# Ferramenta CLI
+
+Ferramenta de linha de comando para converter relatórios de experimentos do grupo.
+
+## Instalação
+
+Use o pipx para isolar o ambiente:
+
+```bash
+pipx install ferramenta-cli
+# depois confira a versão instalada
+ferramenta --versao
+```
+
+## Uso
+
+Veja o [guia de uso](docs/uso.md#execução) e a decisão sobre o [formato de saída](docs/adr/0001-formato-saida.md).
+""",
+    "docs/uso.md": """# Guia de uso
+
+## Execução
+
+Rode `ferramenta converter entrada.csv --saida relatorio.json` para gerar o relatório em JSON.
+O comando lê o CSV, valida as colunas obrigatórias e grava a saída no caminho indicado.
+
+## Testes
+
+Execute `pytest -q` na raiz do repositório para validar a ferramenta antes de publicar uma versão.
+""",
+    "docs/adr/0001-formato-saida.md": """# ADR 0001: formato de saída
+
+## Decisão
+
+A saída padrão é JSON com chaves em snake_case, porque os scripts de análise do grupo já consomem JSON
+e o CSV perde a tipagem das colunas numéricas quando passa por planilhas.
+""",
+    "node_modules/pacote/README.md": "# pacote\n\nTexto de dependência copiada que não deve ser indexado de forma alguma neste projeto.\n",
+}
+
+SEM_README = {
+    "GUIA_DE_USO.md": """# Guia do notebook de análise
+
+Para reproduzir as figuras do artigo, abra o notebook principal, selecione o kernel do ambiente de análise
+e execute todas as células na ordem. As figuras são gravadas na pasta de saída com o nome do experimento.
+""",
+}
+
+SEM_DOC_UTIL = {
+    "README.md": "# repo-vazio\n",
+    "CHANGELOG.md": "<!-- generated by release tool -->\n# Changelog\n\n## 1.0.0\n- versão inicial gerada pela ferramenta de release do projeto, sem edição manual.\n",
+    "docs/TODO.md": "# Em breve\n\nTODO: escrever a documentação.\n",
+    "vendor/lib/README.md": "# lib\n\nDocumentação de biblioteca de terceiros copiada para o repositório como dependência vendorizada.\n",
+}
+
+
+class BaseConhecimento(TestCase):
+    """Isola espelhos e repositórios de teste num diretório temporário."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="kb-teste-"))
+        self.raiz_fontes = self.tmp / "fontes"
+        self.raiz_fontes.mkdir()
+        self.ajustes = override_settings(
+            CONHECIMENTO_DIR_ESPELHOS=str(self.tmp / "espelhos"),
+            CONHECIMENTO_DIR_FONTES_LOCAIS=str(self.raiz_fontes),
+            CONHECIMENTO_EMBEDDER="conhecimento.tests.apoio.EmbedderFalso",
+            EMBEDDINGS_MODELO="falso-v1",
+        )
+        self.ajustes.enable()
+        EmbedderFalso.chamadas = []
+        self.projeto = Projeto.objects.create(nome="Projeto pessoal de teste", cenario="Pessoal")
+
+    def tearDown(self):
+        self.ajustes.disable()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def criar_fonte(self, nome: str, arquivos: dict, projeto=None, **campos) -> tuple[FonteGit, RepoTeste]:
+        repo = RepoTeste(self.raiz_fontes, nome, arquivos)
+        repo.commit("primeiro commit")
+        repositorio = Repositorio.objects.create(projeto=projeto or self.projeto, nome=nome)
+        fonte = FonteGit.objects.create(
+            repositorio=repositorio,
+            conta="robertopfneto",
+            nome_repositorio=nome,
+            branch="main",
+            url=str(repo.dir),
+            **campos,
+        )
+        return fonte, repo
